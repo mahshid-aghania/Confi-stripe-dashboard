@@ -115,7 +115,12 @@ export function RefundsWorkspace({ report }: { report: RefundsReport }) {
           ) : null}
         </div>
 
-        <RefundsExport rows={visible} windowDays={report.windowDays} filtered={filtering} />
+        <RefundsExport
+          rows={visible}
+          fromISO={report.range.fromISO}
+          toISO={report.range.toISO}
+          filtered={filtering}
+        />
       </div>
 
       <div className="flex flex-wrap items-center gap-x-4 gap-y-1">

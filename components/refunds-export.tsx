@@ -78,11 +78,13 @@ function toCsv(rows: RefundRow[]) {
 
 export function RefundsExport({
   rows,
-  windowDays,
+  fromISO,
+  toISO,
   filtered = false,
 }: {
   rows: RefundRow[]
-  windowDays: number
+  fromISO: string
+  toISO: string
   filtered?: boolean
 }) {
   function download() {
@@ -90,10 +92,10 @@ export function RefundsExport({
     const blob = new Blob([`\uFEFF${toCsv(rows)}`], { type: "text/csv;charset=utf-8;" })
     const url = URL.createObjectURL(blob)
     const link = document.createElement("a")
-    const stamp = new Date().toISOString().slice(0, 10)
 
     link.href = url
-    link.download = `refunds-${filtered ? "filtered" : `last-${windowDays}d`}-${stamp}.csv`
+    // Name carries the exact range so saved exports stay self-describing.
+    link.download = `refunds-${fromISO}-to-${toISO}${filtered ? "-filtered" : ""}.csv`
     document.body.appendChild(link)
     link.click()
     document.body.removeChild(link)

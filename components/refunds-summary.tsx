@@ -52,6 +52,7 @@ export function RefundsSummary({ report }: { report: RefundsReport }) {
                 {formatRefundReason(entry.reason === "unspecified" ? null : entry.reason)}
               </span>
               <span className="ml-1.5 text-muted">
+                {" — "}
                 {formatNumber(entry.count)} · {formatCurrency(entry.amount, report.currency)}
               </span>
             </p>

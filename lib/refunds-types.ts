@@ -3,6 +3,8 @@
  * client components (table rendering, CSV export) can import them.
  */
 
+import type { DateRange } from "@/lib/date-range"
+
 export type RefundAddress = {
   line1: string | null
   line2: string | null
@@ -37,6 +39,7 @@ export type RefundRow = {
 
 export type RefundsReport = {
   rows: RefundRow[]
+  range: DateRange
   windowDays: number
   rangeStart: number
   generatedAt: number

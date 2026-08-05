@@ -5,7 +5,23 @@ import type Stripe from "stripe"
 import { stripe } from "@/lib/stripe"
 
 const DAY_SECONDS = 86_400
+const HOUR_SECONDS = 3_600
+
+/** Window used for the KPI cards and their period-over-period deltas. */
 export const WINDOW_DAYS = 30
+
+/**
+ * Chart granularity ladder, coarsest-last. The first rung whose total span
+ * covers the real data is used, so a sandbox with an hour of activity gets a
+ * readable minute/hour axis instead of 30 mostly-empty days.
+ */
+const GRANULARITY_LADDER = [
+  { bucketSeconds: 900, buckets: 24 }, // 6 hours at 15m
+  { bucketSeconds: HOUR_SECONDS, buckets: 24 }, // 1 day at 1h
+  { bucketSeconds: 6 * HOUR_SECONDS, buckets: 28 }, // 7 days at 6h
+  { bucketSeconds: DAY_SECONDS, buckets: 30 }, // 30 days at 1d
+  { bucketSeconds: DAY_SECONDS, buckets: 90 }, // 90 days at 1d
+] as const
 
 export type PaymentRow = {
   id: string
@@ -22,9 +38,19 @@ export type PaymentRow = {
 }
 
 export type RevenuePoint = {
-  /** Unix seconds at the start of the bucket day (UTC). */
+  /** Unix seconds at the start of the bucket. */
   date: number
   gross: number
+  count: number
+}
+
+export type RevenueSeries = {
+  points: RevenuePoint[]
+  /** Width of one bucket in seconds — drives axis label formatting. */
+  bucketSeconds: number
+  start: number
+  end: number
+  total: number
   count: number
 }
 
@@ -44,27 +70,35 @@ export type DashboardData = {
   availableBalance: number
   pendingBalance: number
   successRate: number
-  series: RevenuePoint[]
+  series: RevenueSeries
   payments: PaymentRow[]
   isEmpty: boolean
   error: string | null
 }
 
+function floorTo(unixSeconds: number, bucketSeconds: number) {
+  return Math.floor(unixSeconds / bucketSeconds) * bucketSeconds
+}
+
 function startOfUtcDay(unixSeconds: number) {
-  const date = new Date(unixSeconds * 1000)
-  date.setUTCHours(0, 0, 0, 0)
-  return Math.floor(date.getTime() / 1000)
+  return floorTo(unixSeconds, DAY_SECONDS)
 }
 
 function customerLabel(charge: Stripe.Charge) {
   const details = charge.billing_details
   if (details?.name) return details.name
-  if (details?.email) return details.email
-  if (typeof charge.customer === "string") return charge.customer
-  if (charge.customer && "email" in charge.customer && charge.customer.email) {
-    return charge.customer.email
+
+  const customer = charge.customer
+  if (customer && typeof customer !== "string" && !("deleted" in customer && customer.deleted)) {
+    const expanded = customer as Stripe.Customer
+    if (expanded.name) return expanded.name
+    if (expanded.email) return expanded.email
   }
-  return "Guest"
+
+  if (details?.email) return details.email
+  if (charge.receipt_email) return charge.receipt_email
+  if (typeof customer === "string") return customer
+  return "Unnamed"
 }
 
 function cardDetails(charge: Stripe.Charge) {
@@ -103,7 +137,7 @@ export async function getDashboardData(): Promise<DashboardData> {
     availableBalance: 0,
     pendingBalance: 0,
     successRate: 0,
-    series: buildSeries([], windowStart),
+    series: buildSeries([], now),
     payments: [],
     isEmpty: true,
     error: null,
@@ -116,7 +150,7 @@ export async function getDashboardData(): Promise<DashboardData> {
         .list({
           limit: 100,
           created: { gte: previousStart },
-          expand: ["data.balance_transaction"],
+          expand: ["data.balance_transaction", "data.customer"],
         })
         .autoPagingToArray({ limit: 1000 }),
     ])
@@ -155,7 +189,7 @@ export async function getDashboardData(): Promise<DashboardData> {
       availableBalance: balance.available.reduce((total, entry) => total + entry.amount, 0),
       pendingBalance: balance.pending.reduce((total, entry) => total + entry.amount, 0),
       successRate: current.length === 0 ? 0 : succeeded.length / current.length,
-      series: buildSeries(succeeded, windowStart),
+      series: buildSeries(succeeded, now),
       payments: charges
         .slice()
         .sort((a, b) => b.created - a.created)
@@ -184,21 +218,47 @@ export async function getDashboardData(): Promise<DashboardData> {
   }
 }
 
-function buildSeries(charges: Stripe.Charge[], windowStart: number): RevenuePoint[] {
-  const buckets = new Map<number, RevenuePoint>()
+/**
+ * Buckets succeeded charges into a window sized to the data that actually
+ * exists. Stripe stamps charges with server time and cannot backdate them, so
+ * a fixed 30-day axis flattens a fresh account into a single invisible spike.
+ */
+function buildSeries(charges: Stripe.Charge[], now: number): RevenueSeries {
+  const earliest = charges.reduce((min, charge) => Math.min(min, charge.created), Number.POSITIVE_INFINITY)
+  const span = Number.isFinite(earliest) ? now - earliest : WINDOW_DAYS * DAY_SECONDS
 
-  for (let index = 0; index < WINDOW_DAYS; index += 1) {
-    const date = windowStart + index * DAY_SECONDS
-    buckets.set(date, { date, gross: 0, count: 0 })
+  const rung =
+    GRANULARITY_LADDER.find((candidate) => candidate.bucketSeconds * candidate.buckets >= span) ??
+    GRANULARITY_LADDER[GRANULARITY_LADDER.length - 1]
+
+  const { bucketSeconds, buckets } = rung
+  const end = floorTo(now, bucketSeconds)
+  const start = end - (buckets - 1) * bucketSeconds
+
+  const points = new Map<number, RevenuePoint>()
+  for (let index = 0; index < buckets; index += 1) {
+    const date = start + index * bucketSeconds
+    points.set(date, { date, gross: 0, count: 0 })
   }
 
+  let total = 0
+  let count = 0
+
   for (const charge of charges) {
-    const key = startOfUtcDay(charge.created)
-    const bucket = buckets.get(key)
+    const bucket = points.get(floorTo(charge.created, bucketSeconds))
     if (!bucket) continue
     bucket.gross += charge.amount
     bucket.count += 1
+    total += charge.amount
+    count += 1
   }
 
-  return Array.from(buckets.values())
+  return {
+    points: Array.from(points.values()),
+    bucketSeconds,
+    start,
+    end: end + bucketSeconds,
+    total,
+    count,
+  }
 }

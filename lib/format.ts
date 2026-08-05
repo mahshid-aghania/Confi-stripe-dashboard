@@ -46,12 +46,32 @@ export function formatDelta(current: number, previous: number) {
   }
 }
 
-export function formatDayLabel(unixSeconds: number) {
+/** Axis tick label sized to the bucket width: clock time intraday, date otherwise. */
+export function formatBucketLabel(unixSeconds: number, bucketSeconds: number) {
+  const intraday = bucketSeconds < 86_400
+
   return new Intl.DateTimeFormat("en-US", {
-    month: "short",
-    day: "numeric",
+    ...(intraday ? { hour: "numeric", minute: "2-digit" } : { month: "short", day: "numeric" }),
     timeZone: "UTC",
   }).format(unixSeconds * 1000)
+}
+
+/** Human description of the charted window, e.g. "6 hours · 15m buckets". */
+export function formatWindowLabel(bucketSeconds: number, buckets: number) {
+  const totalSeconds = bucketSeconds * buckets
+  const bucketLabel =
+    bucketSeconds < 3_600
+      ? `${bucketSeconds / 60}m`
+      : bucketSeconds < 86_400
+        ? `${bucketSeconds / 3_600}h`
+        : `${bucketSeconds / 86_400}d`
+
+  const spanLabel =
+    totalSeconds < 86_400
+      ? `${Math.round(totalSeconds / 3_600)} hours`
+      : `${Math.round(totalSeconds / 86_400)} days`
+
+  return `${spanLabel} · ${bucketLabel} buckets`
 }
 
 export function formatTimestamp(unixSeconds: number) {

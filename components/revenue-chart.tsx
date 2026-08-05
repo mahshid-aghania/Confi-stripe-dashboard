@@ -11,6 +11,18 @@ type RevenueChartProps = {
   showComparison: boolean
 }
 
+/**
+ * Recharts writes these straight into SVG paint attributes, so they must be
+ * real color values rather than Tailwind classes. Pointing them at the theme
+ * tokens keeps the chart in step with globals.css instead of drifting.
+ */
+const C = {
+  signal: "var(--color-signal)",
+  border: "var(--color-border)",
+  muted: "var(--color-muted)",
+  background: "var(--color-background)",
+} as const
+
 export function RevenueChart({ series, currency, showComparison }: RevenueChartProps) {
   const { points, bucketSeconds } = series
   const hasVolume = points.some((point) => point.gross > 0)
@@ -31,19 +43,19 @@ export function RevenueChart({ series, currency, showComparison }: RevenueChartP
         <AreaChart data={points} margin={{ top: 12, right: 12, bottom: 0, left: 0 }}>
           <defs>
             <linearGradient id="revenueFill" x1="0" y1="0" x2="0" y2="1">
-              <stop offset="0%" stopColor="#4c8dff" stopOpacity={0.34} />
-              <stop offset="100%" stopColor="#4c8dff" stopOpacity={0} />
+              <stop offset="0%" stopColor={C.signal} stopOpacity={0.34} />
+              <stop offset="100%" stopColor={C.signal} stopOpacity={0} />
             </linearGradient>
           </defs>
 
-          <CartesianGrid stroke="#22262e" strokeDasharray="2 4" vertical={false} />
+          <CartesianGrid stroke={C.border} strokeDasharray="2 4" vertical={false} />
 
           <XAxis
             dataKey="date"
             tickFormatter={(value: number) => formatBucketLabel(value, bucketSeconds)}
             tickLine={false}
-            axisLine={{ stroke: "#22262e" }}
-            tick={{ fill: "#767e8b", fontSize: 11, fontFamily: "var(--font-mono)" }}
+            axisLine={{ stroke: C.border }}
+            tick={{ fill: C.muted, fontSize: 11, fontFamily: "var(--font-mono)" }}
             minTickGap={36}
             dy={8}
           />
@@ -52,12 +64,12 @@ export function RevenueChart({ series, currency, showComparison }: RevenueChartP
             tickFormatter={(value: number) => formatCurrency(value, currency, { compact: true })}
             tickLine={false}
             axisLine={false}
-            tick={{ fill: "#767e8b", fontSize: 11, fontFamily: "var(--font-mono)" }}
+            tick={{ fill: C.muted, fontSize: 11, fontFamily: "var(--font-mono)" }}
             width={64}
           />
 
           <Tooltip
-            cursor={{ stroke: "#4c8dff", strokeWidth: 1, strokeDasharray: "3 3" }}
+            cursor={{ stroke: C.signal, strokeWidth: 1, strokeDasharray: "3 3" }}
             content={({ active, payload }) => {
               if (!active || !payload?.length) return null
               const point = payload[0]?.payload as RevenuePoint
@@ -85,7 +97,7 @@ export function RevenueChart({ series, currency, showComparison }: RevenueChartP
             <Line
               type="monotone"
               dataKey="previousGross"
-              stroke="#767e8b"
+              stroke={C.muted}
               strokeWidth={1.25}
               strokeDasharray="3 3"
               dot={false}
@@ -97,11 +109,11 @@ export function RevenueChart({ series, currency, showComparison }: RevenueChartP
           <Area
             type="monotone"
             dataKey="gross"
-            stroke="#4c8dff"
+            stroke={C.signal}
             strokeWidth={1.75}
             fill="url(#revenueFill)"
-            dot={showDots ? { r: 2.5, fill: "#4c8dff", stroke: "none" } : false}
-            activeDot={{ r: 3, fill: "#4c8dff", stroke: "#08090b", strokeWidth: 2 }}
+            dot={showDots ? { r: 2.5, fill: C.signal, stroke: "none" } : false}
+            activeDot={{ r: 3, fill: C.signal, stroke: C.background, strokeWidth: 2 }}
             isAnimationActive={false}
           />
         </AreaChart>

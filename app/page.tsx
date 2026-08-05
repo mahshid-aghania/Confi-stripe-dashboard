@@ -2,6 +2,7 @@ import { ConsoleHeader } from "@/components/console-header"
 import { MetricGrid } from "@/components/metric-grid"
 import { PaymentsTable } from "@/components/payments-table"
 import { RevenuePanel } from "@/components/revenue-panel"
+import { TabNav } from "@/components/tab-nav"
 import { getDashboardData } from "@/lib/dashboard-data"
 
 export const dynamic = "force-dynamic"
@@ -12,6 +13,7 @@ export default async function DashboardPage() {
   return (
     <main className="mx-auto flex w-full max-w-6xl flex-col gap-8 px-5 py-10 md:px-8 md:py-14">
       <ConsoleHeader generatedAt={data.generatedAt} windowDays={data.windowDays} live={!data.isEmpty} />
+      <TabNav />
 
       {data.error ? (
         <div role="alert" className="rounded-md border border-alert/40 bg-surface px-5 py-4">

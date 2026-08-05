@@ -2,7 +2,7 @@ import "server-only"
 
 import type Stripe from "stripe"
 
-import { stripe } from "@/lib/stripe"
+import { isPermissionError, stripe } from "@/lib/stripe"
 
 const DAY_SECONDS = 86_400
 const HOUR_SECONDS = 3_600
@@ -67,8 +67,9 @@ export type DashboardData = {
   netVolume: Metric
   successfulPayments: Metric
   refundedVolume: Metric
-  availableBalance: number
-  pendingBalance: number
+  /** null when the restricted key lacks the Balance scope. */
+  availableBalance: number | null
+  pendingBalance: number | null
   successRate: number
   series: RevenueSeries
   payments: PaymentRow[]
@@ -134,8 +135,8 @@ export async function getDashboardData(): Promise<DashboardData> {
     netVolume: { value: 0, previous: 0 },
     successfulPayments: { value: 0, previous: 0 },
     refundedVolume: { value: 0, previous: 0 },
-    availableBalance: 0,
-    pendingBalance: 0,
+    availableBalance: null,
+    pendingBalance: null,
     successRate: 0,
     series: buildSeries([], now),
     payments: [],
@@ -145,7 +146,12 @@ export async function getDashboardData(): Promise<DashboardData> {
 
   try {
     const [balance, charges] = await Promise.all([
-      stripe.balance.retrieve(),
+      // The read-only restricted live key has no Balance scope. Treat the
+      // balance as unavailable rather than failing the whole dashboard.
+      stripe.balance.retrieve().catch((error: unknown) => {
+        if (isPermissionError(error)) return null
+        throw error
+      }),
       stripe.charges
         .list({
           limit: 100,
@@ -155,7 +161,7 @@ export async function getDashboardData(): Promise<DashboardData> {
         .autoPagingToArray({ limit: 1000 }),
     ])
 
-    const currency = balance.available[0]?.currency ?? charges[0]?.currency ?? "usd"
+    const currency = balance?.available[0]?.currency ?? charges[0]?.currency ?? "usd"
 
     const current = charges.filter((charge) => charge.created >= windowStart)
     const previous = charges.filter((charge) => charge.created < windowStart)
@@ -186,8 +192,10 @@ export async function getDashboardData(): Promise<DashboardData> {
         value: sum(current, (charge) => charge.amount_refunded),
         previous: sum(previous, (charge) => charge.amount_refunded),
       },
-      availableBalance: balance.available.reduce((total, entry) => total + entry.amount, 0),
-      pendingBalance: balance.pending.reduce((total, entry) => total + entry.amount, 0),
+      availableBalance: balance
+        ? balance.available.reduce((total, entry) => total + entry.amount, 0)
+        : null,
+      pendingBalance: balance ? balance.pending.reduce((total, entry) => total + entry.amount, 0) : null,
       successRate: current.length === 0 ? 0 : succeeded.length / current.length,
       series: buildSeries(succeeded, now),
       payments: charges

@@ -74,6 +74,23 @@ export function formatWindowLabel(bucketSeconds: number, buckets: number) {
   return `${spanLabel} · ${bucketLabel} buckets`
 }
 
+/** Full calendar date for report rows, e.g. "Mar 4, 2026". */
+export function formatDate(unixSeconds: number) {
+  return new Intl.DateTimeFormat("en-US", {
+    month: "short",
+    day: "numeric",
+    year: "numeric",
+    timeZone: "UTC",
+  }).format(unixSeconds * 1000)
+}
+
+/** Stripe reason codes are snake_case; render them as readable prose. */
+export function formatRefundReason(reason: string | null) {
+  if (!reason) return "Not specified"
+
+  return reason.replace(/_/g, " ").replace(/^\w/, (char) => char.toUpperCase())
+}
+
 export function formatTimestamp(unixSeconds: number) {
   return new Intl.DateTimeFormat("en-US", {
     month: "short",

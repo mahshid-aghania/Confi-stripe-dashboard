@@ -24,11 +24,20 @@ export function MetricGrid({ data }: { data: DashboardData }) {
       hint: "After Stripe fees and refunds",
       delta: formatDelta(data.netVolume.value, data.netVolume.previous),
     },
-    {
-      label: "Available balance",
-      value: formatCurrency(data.availableBalance, currency),
-      hint: `${formatCurrency(data.pendingBalance, currency)} pending`,
-    },
+    // The read-only restricted live key has no Balance scope, so fall back to
+    // refunded volume — which is computable from charges — instead of a blank card.
+    data.availableBalance !== null
+      ? {
+          label: "Available balance",
+          value: formatCurrency(data.availableBalance, currency),
+          hint: `${formatCurrency(data.pendingBalance ?? 0, currency)} pending`,
+        }
+      : {
+          label: "Refunded volume",
+          value: formatCurrency(data.refundedVolume.value, currency),
+          hint: "Balance scope not enabled on key",
+          delta: formatDelta(data.refundedVolume.value, data.refundedVolume.previous),
+        },
     {
       label: "Authorization rate",
       value: data.isEmpty ? "—" : formatPercent(data.successRate),

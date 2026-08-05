@@ -5,6 +5,7 @@ import { usePathname, useSearchParams } from "next/navigation"
 
 const TABS = [
   { href: "/", label: "Overview" },
+  { href: "/report", label: "Report" },
   { href: "/refunds", label: "Refunds" },
 ]
 

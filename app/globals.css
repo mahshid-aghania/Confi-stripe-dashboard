@@ -53,3 +53,45 @@
   background-image: linear-gradient(to right, rgba(34, 38, 46, 0.6) 1px, transparent 1px);
   background-size: 84px 100%;
 }
+
+/*
+ * The report is designed to be saved as a PDF. Inverting to paper tones keeps it
+ * legible when printed and avoids flooding a printer with a dark background.
+ */
+@media print {
+  @page {
+    margin: 14mm;
+  }
+
+  html {
+    color-scheme: light;
+  }
+
+  body {
+    background-color: #ffffff;
+    color: #101216;
+  }
+
+  /* Force the theme tokens to paper equivalents for every descendant. */
+  :root {
+    --color-background: #ffffff;
+    --color-foreground: #101216;
+    --color-surface: #ffffff;
+    --color-surface-raised: #f4f5f7;
+    --color-border: #c9ced8;
+    --color-muted: #55606f;
+  }
+
+  /* Keep a chart and its caption from splitting across a page break. */
+  section {
+    break-inside: avoid;
+  }
+
+  table {
+    break-inside: auto;
+  }
+
+  tr {
+    break-inside: avoid;
+  }
+}

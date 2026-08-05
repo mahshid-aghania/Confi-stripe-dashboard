@@ -12,6 +12,16 @@ type MonthRangePickerProps = {
   toKey: string
 }
 
+/** "2019-01" -> "Jan 2019", for a month outside the rolling choice list. */
+function labelForKey(key: string) {
+  const match = /^(\d{4})-(\d{2})$/.exec(key)
+  if (!match) return key
+
+  return new Intl.DateTimeFormat("en-US", { month: "short", year: "numeric", timeZone: "UTC" }).format(
+    Date.UTC(Number(match[1]), Number(match[2]) - 1, 1),
+  )
+}
+
 /**
  * Month-granularity range control. A monthly report is almost always requested
  * in whole months ("January through July"), which takes two clicks here versus
@@ -22,6 +32,30 @@ export function MonthRangePicker({ choices, fromKey, toKey }: MonthRangePickerPr
   const [pending, startTransition] = useTransition()
   const [from, setFrom] = useState(fromKey)
   const [to, setTo] = useState(toKey)
+
+  // Re-sync when the resolved range changes underneath us — browser Back, or a
+  // range carried in from another tab. Without this the dropdowns keep showing
+  // a stale selection that no longer matches the report on screen.
+  const [syncedKeys, setSyncedKeys] = useState(`${fromKey}|${toKey}`)
+  if (syncedKeys !== `${fromKey}|${toKey}`) {
+    setSyncedKeys(`${fromKey}|${toKey}`)
+    setFrom(fromKey)
+    setTo(toKey)
+  }
+
+  /*
+   * A deep-linked range can predate the rolling choice list (e.g. ?from=2019-01).
+   * A <select> silently falls back to its first option in that case, so the
+   * control would contradict the report it is supposedly describing. Fold any
+   * missing selection into the list to keep the two honest.
+   */
+  const options = [...choices]
+  for (const key of [fromKey, toKey, from, to]) {
+    if (!options.some((choice) => choice.value === key)) {
+      options.push({ value: key, label: labelForKey(key) })
+    }
+  }
+  options.sort((a, b) => b.value.localeCompare(a.value))
 
   const dirty = from !== fromKey || to !== toKey
 
@@ -36,8 +70,8 @@ export function MonthRangePicker({ choices, fromKey, toKey }: MonthRangePickerPr
 
   return (
     <div className={`flex flex-wrap items-end gap-3 transition-opacity ${pending ? "opacity-60" : ""}`}>
-      <Field id="report-from" label="From" value={from} onChange={setFrom} choices={choices} />
-      <Field id="report-to" label="To" value={to} onChange={setTo} choices={choices} />
+      <Field id="report-from" label="From" value={from} onChange={setFrom} choices={options} />
+      <Field id="report-to" label="To" value={to} onChange={setTo} choices={options} />
 
       <button
         type="button"

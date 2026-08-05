@@ -8,8 +8,8 @@ const COLUMNS = [
   { key: "fees", label: "Fees", align: "right" as const },
   { key: "refunded", label: "Refunded", align: "right" as const },
   { key: "net", label: "Net", align: "right" as const },
-  { key: "payments", label: "Payments", align: "right" as const },
-  { key: "aov", label: "Avg order", align: "right" as const },
+  { key: "payments", label: "Txns", align: "right" as const },
+  { key: "aov", label: "AOV", align: "right" as const },
 ]
 
 /** Month-by-month breakdown with a totals row that ties back to the summary. */
@@ -32,7 +32,7 @@ export function MonthlyTable({ data }: { data: ReportData }) {
                 <th
                   key={column.key}
                   scope="col"
-                  className={`numeric px-4 py-3 text-[10px] font-normal uppercase tracking-[0.16em] text-muted ${
+                  className={`numeric px-2.5 py-3 text-[10px] font-normal uppercase tracking-[0.16em] text-muted ${
                     column.align === "right" ? "text-right" : "text-left"
                   }`}
                 >
@@ -45,7 +45,7 @@ export function MonthlyTable({ data }: { data: ReportData }) {
           <tbody>
             {months.map((month) => (
               <tr key={month.key} className="border-b border-border/60 last:border-b-0">
-                <th scope="row" className="px-4 py-3 text-left font-normal">
+                <th scope="row" className="whitespace-nowrap px-3 py-3 text-left font-normal">
                   <span className="numeric text-sm text-foreground">{month.label}</span>
                   {month.partial ? (
                     <span className="numeric ml-2 text-[10px] uppercase tracking-[0.12em] text-warn">
@@ -54,7 +54,7 @@ export function MonthlyTable({ data }: { data: ReportData }) {
                   ) : null}
                 </th>
                 <Cell>{formatCurrency(month.gross, currency)}</Cell>
-                <td className="px-4 py-3 text-right">
+                <td className="px-3 py-3 text-right">
                   <MomBadge row={month} />
                 </td>
                 <Cell muted>{formatCurrency(month.fees, currency)}</Cell>
@@ -70,7 +70,7 @@ export function MonthlyTable({ data }: { data: ReportData }) {
 
           <tfoot>
             <tr className="border-t border-border bg-surface-raised">
-              <th scope="row" className="numeric px-4 py-3 text-left text-xs uppercase tracking-[0.14em] text-muted">
+              <th scope="row" className="numeric px-3 py-3 text-left text-xs uppercase tracking-[0.14em] text-muted">
                 Total
               </th>
               <Cell strong>{formatCurrency(totals.gross, currency)}</Cell>
@@ -108,7 +108,7 @@ function Cell({
   const color = tone === "warn" ? "text-warn" : tone === "muted" || muted ? "text-muted" : "text-foreground"
 
   return (
-    <td className={`numeric px-4 py-3 text-right text-sm ${color} ${strong ? "text-foreground" : ""}`}>
+    <td className={`numeric px-2.5 py-3 text-right text-sm ${color} ${strong ? "text-foreground" : ""}`}>
       {children}
     </td>
   )

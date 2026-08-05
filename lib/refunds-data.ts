@@ -2,10 +2,9 @@ import "server-only"
 
 import type Stripe from "stripe"
 
+import { type DateRange, resolveRange } from "@/lib/date-range"
 import { stripe } from "@/lib/stripe"
 import { EMPTY_ADDRESS, type RefundAddress, type RefundRow, type RefundsReport } from "@/lib/refunds-types"
-
-export const REFUND_WINDOW_DAYS = 30
 
 function expanded<T extends { id: string }>(value: string | T | null | undefined): T | null {
   return value && typeof value === "object" ? value : null
@@ -121,12 +120,15 @@ function toRow(refund: Stripe.Refund): RefundRow {
  * revenue. Returns null instead of throwing so a missing scope or a slow page
  * never takes the report down with it.
  */
-async function getGrossVolume(rangeStart: number): Promise<number | null> {
+async function getGrossVolume(rangeStart: number, rangeEnd: number): Promise<number | null> {
   try {
     let total = 0
     let seen = 0
 
-    for await (const charge of stripe.charges.list({ limit: 100, created: { gte: rangeStart } })) {
+    for await (const charge of stripe.charges.list({
+      limit: 100,
+      created: { gte: rangeStart, lt: rangeEnd },
+    })) {
       if (charge.status === "succeeded") total += charge.amount
       if (++seen >= 2000) break
     }
@@ -142,12 +144,15 @@ async function getGrossVolume(rangeStart: number): Promise<number | null> {
  * `charge.customer` is expanded so the address chain can fall back to the saved
  * customer record even when the refund itself has no customer reference.
  */
-export async function getRefundsReport(windowDays = REFUND_WINDOW_DAYS): Promise<RefundsReport> {
+export async function getRefundsReport(range: DateRange = resolveRange()): Promise<RefundsReport> {
   const generatedAt = Math.floor(Date.now() / 1000)
-  const rangeStart = generatedAt - windowDays * 86_400
+  const rangeStart = range.start
+  const rangeEnd = range.end
+  const windowDays = range.days
 
   const base: RefundsReport = {
     rows: [],
+    range,
     windowDays,
     rangeStart,
     generatedAt,
@@ -168,7 +173,7 @@ export async function getRefundsReport(windowDays = REFUND_WINDOW_DAYS): Promise
   try {
     const pages = stripe.refunds.list({
       limit: 100,
-      created: { gte: rangeStart },
+      created: { gte: rangeStart, lt: rangeEnd },
       expand: ["data.charge", "data.customer", "data.charge.customer"],
     })
 
@@ -188,7 +193,7 @@ export async function getRefundsReport(windowDays = REFUND_WINDOW_DAYS): Promise
   }
 
   const rows = refunds.map(toRow).sort((a, b) => b.createdAt - a.createdAt)
-  const grossVolume = await getGrossVolume(rangeStart)
+  const grossVolume = await getGrossVolume(rangeStart, rangeEnd)
 
   const reasonTotals = new Map<string, { count: number; amount: number }>()
   for (const row of rows) {

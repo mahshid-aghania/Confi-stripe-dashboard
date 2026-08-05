@@ -4,15 +4,27 @@ import { PaymentsTable } from "@/components/payments-table"
 import { RevenuePanel } from "@/components/revenue-panel"
 import { TabNav } from "@/components/tab-nav"
 import { getDashboardData } from "@/lib/dashboard-data"
+import { type RangeParams, resolveRange } from "@/lib/date-range"
 
 export const dynamic = "force-dynamic"
 
-export default async function DashboardPage() {
-  const data = await getDashboardData()
+export default async function DashboardPage({
+  searchParams,
+}: {
+  searchParams: Promise<RangeParams>
+}) {
+  const range = resolveRange(await searchParams)
+  const data = await getDashboardData(range)
 
   return (
     <main className="mx-auto flex w-full max-w-6xl flex-col gap-8 px-5 py-10 md:px-8 md:py-14">
-      <ConsoleHeader generatedAt={data.generatedAt} windowDays={data.windowDays} live={!data.isEmpty} />
+      <ConsoleHeader
+        title="Revenue console"
+        generatedAt={data.generatedAt}
+        range={data.range}
+        live={!data.isEmpty}
+        basePath="/"
+      />
       <TabNav />
 
       {data.error ? (
@@ -22,8 +34,8 @@ export default async function DashboardPage() {
         </div>
       ) : null}
 
-      <MetricGrid data={data} />
       <RevenuePanel data={data} />
+      <MetricGrid data={data} />
       <PaymentsTable payments={data.payments} />
 
       <footer className="border-t border-border pt-6">

@@ -2,26 +2,8 @@ import "server-only"
 
 import type Stripe from "stripe"
 
+import { type DateRange, bucketSecondsFor, previousRange, resolveRange } from "@/lib/date-range"
 import { isPermissionError, stripe } from "@/lib/stripe"
-
-const DAY_SECONDS = 86_400
-const HOUR_SECONDS = 3_600
-
-/** Window used for the KPI cards and their period-over-period deltas. */
-export const WINDOW_DAYS = 30
-
-/**
- * Chart granularity ladder, coarsest-last. The first rung whose total span
- * covers the real data is used, so a sandbox with an hour of activity gets a
- * readable minute/hour axis instead of 30 mostly-empty days.
- */
-const GRANULARITY_LADDER = [
-  { bucketSeconds: 900, buckets: 24 }, // 6 hours at 15m
-  { bucketSeconds: HOUR_SECONDS, buckets: 24 }, // 1 day at 1h
-  { bucketSeconds: 6 * HOUR_SECONDS, buckets: 28 }, // 7 days at 6h
-  { bucketSeconds: DAY_SECONDS, buckets: 30 }, // 30 days at 1d
-  { bucketSeconds: DAY_SECONDS, buckets: 90 }, // 90 days at 1d
-] as const
 
 export type PaymentRow = {
   id: string
@@ -42,6 +24,8 @@ export type RevenuePoint = {
   date: number
   gross: number
   count: number
+  /** Same bucket offset in the preceding period, for the comparison overlay. */
+  previousGross: number
 }
 
 export type RevenueSeries = {
@@ -51,7 +35,10 @@ export type RevenueSeries = {
   start: number
   end: number
   total: number
+  previousTotal: number
   count: number
+  /** Largest bucket in the current period. */
+  peak: RevenuePoint | null
 }
 
 export type Metric = {
@@ -61,11 +48,12 @@ export type Metric = {
 
 export type DashboardData = {
   currency: string
-  windowDays: number
+  range: DateRange
   generatedAt: number
   grossVolume: Metric
   netVolume: Metric
   successfulPayments: Metric
+  averageOrderValue: Metric
   refundedVolume: Metric
   /** null when the restricted key lacks the Balance scope. */
   availableBalance: number | null
@@ -75,14 +63,6 @@ export type DashboardData = {
   payments: PaymentRow[]
   isEmpty: boolean
   error: string | null
-}
-
-function floorTo(unixSeconds: number, bucketSeconds: number) {
-  return Math.floor(unixSeconds / bucketSeconds) * bucketSeconds
-}
-
-function startOfUtcDay(unixSeconds: number) {
-  return floorTo(unixSeconds, DAY_SECONDS)
 }
 
 function customerLabel(charge: Stripe.Charge) {
@@ -122,23 +102,23 @@ function netAmount(charge: Stripe.Charge) {
   return charge.amount - charge.amount_refunded
 }
 
-export async function getDashboardData(): Promise<DashboardData> {
+export async function getDashboardData(range: DateRange = resolveRange()): Promise<DashboardData> {
   const now = Math.floor(Date.now() / 1000)
-  const windowStart = startOfUtcDay(now - (WINDOW_DAYS - 1) * DAY_SECONDS)
-  const previousStart = windowStart - WINDOW_DAYS * DAY_SECONDS
+  const comparison = previousRange(range)
 
   const empty: DashboardData = {
     currency: "usd",
-    windowDays: WINDOW_DAYS,
+    range,
     generatedAt: now,
     grossVolume: { value: 0, previous: 0 },
     netVolume: { value: 0, previous: 0 },
     successfulPayments: { value: 0, previous: 0 },
+    averageOrderValue: { value: 0, previous: 0 },
     refundedVolume: { value: 0, previous: 0 },
     availableBalance: null,
     pendingBalance: null,
     successRate: 0,
-    series: buildSeries([], now),
+    series: buildSeries([], [], range),
     payments: [],
     isEmpty: true,
     error: null,
@@ -155,16 +135,17 @@ export async function getDashboardData(): Promise<DashboardData> {
       stripe.charges
         .list({
           limit: 100,
-          created: { gte: previousStart },
+          // Spans both periods so deltas need only one round trip.
+          created: { gte: comparison.start, lt: range.end },
           expand: ["data.balance_transaction", "data.customer"],
         })
-        .autoPagingToArray({ limit: 1000 }),
+        .autoPagingToArray({ limit: 2500 }),
     ])
 
     const currency = balance?.available[0]?.currency ?? charges[0]?.currency ?? "usd"
 
-    const current = charges.filter((charge) => charge.created >= windowStart)
-    const previous = charges.filter((charge) => charge.created < windowStart)
+    const current = charges.filter((charge) => charge.created >= range.start)
+    const previous = charges.filter((charge) => charge.created < range.start)
 
     const succeeded = current.filter((charge) => charge.status === "succeeded")
     const previousSucceeded = previous.filter((charge) => charge.status === "succeeded")
@@ -172,14 +153,14 @@ export async function getDashboardData(): Promise<DashboardData> {
     const sum = (list: Stripe.Charge[], pick: (charge: Stripe.Charge) => number) =>
       list.reduce((total, charge) => total + pick(charge), 0)
 
+    const grossValue = sum(succeeded, (charge) => charge.amount)
+    const grossPrevious = sum(previousSucceeded, (charge) => charge.amount)
+
     return {
       currency,
-      windowDays: WINDOW_DAYS,
+      range,
       generatedAt: now,
-      grossVolume: {
-        value: sum(succeeded, (charge) => charge.amount),
-        previous: sum(previousSucceeded, (charge) => charge.amount),
-      },
+      grossVolume: { value: grossValue, previous: grossPrevious },
       netVolume: {
         value: sum(succeeded, netAmount),
         previous: sum(previousSucceeded, netAmount),
@@ -187,6 +168,10 @@ export async function getDashboardData(): Promise<DashboardData> {
       successfulPayments: {
         value: succeeded.length,
         previous: previousSucceeded.length,
+      },
+      averageOrderValue: {
+        value: succeeded.length === 0 ? 0 : Math.round(grossValue / succeeded.length),
+        previous: previousSucceeded.length === 0 ? 0 : Math.round(grossPrevious / previousSucceeded.length),
       },
       refundedVolume: {
         value: sum(current, (charge) => charge.amount_refunded),
@@ -197,9 +182,9 @@ export async function getDashboardData(): Promise<DashboardData> {
         : null,
       pendingBalance: balance ? balance.pending.reduce((total, entry) => total + entry.amount, 0) : null,
       successRate: current.length === 0 ? 0 : succeeded.length / current.length,
-      series: buildSeries(succeeded, now),
+      series: buildSeries(succeeded, previousSucceeded, range),
       payments: charges
-        .slice()
+        .filter((charge) => charge.created >= range.start)
         .sort((a, b) => b.created - a.created)
         .slice(0, 12)
         .map((charge) => ({
@@ -214,7 +199,7 @@ export async function getDashboardData(): Promise<DashboardData> {
           ...cardDetails(charge),
           created: charge.created,
         })),
-      isEmpty: charges.length === 0,
+      isEmpty: current.length === 0,
       error: null,
     }
   } catch (error) {
@@ -227,46 +212,62 @@ export async function getDashboardData(): Promise<DashboardData> {
 }
 
 /**
- * Buckets succeeded charges into a window sized to the data that actually
- * exists. Stripe stamps charges with server time and cannot backdate them, so
- * a fixed 30-day axis flattens a fresh account into a single invisible spike.
+ * Buckets succeeded charges across the selected range. Buckets are aligned to
+ * the range start rather than the epoch, so the first sample always begins on
+ * the chosen day instead of an arbitrary weekday.
  */
-function buildSeries(charges: Stripe.Charge[], now: number): RevenueSeries {
-  const earliest = charges.reduce((min, charge) => Math.min(min, charge.created), Number.POSITIVE_INFINITY)
-  const span = Number.isFinite(earliest) ? now - earliest : WINDOW_DAYS * DAY_SECONDS
+function buildSeries(
+  charges: Stripe.Charge[],
+  previousCharges: Stripe.Charge[],
+  range: DateRange,
+): RevenueSeries {
+  const bucketSeconds = bucketSecondsFor(range)
+  const bucketCount = Math.max(1, Math.ceil((range.end - range.start) / bucketSeconds))
+  const comparison = previousRange(range)
 
-  const rung =
-    GRANULARITY_LADDER.find((candidate) => candidate.bucketSeconds * candidate.buckets >= span) ??
-    GRANULARITY_LADDER[GRANULARITY_LADDER.length - 1]
+  const points: RevenuePoint[] = Array.from({ length: bucketCount }, (_, index) => ({
+    date: range.start + index * bucketSeconds,
+    gross: 0,
+    count: 0,
+    previousGross: 0,
+  }))
 
-  const { bucketSeconds, buckets } = rung
-  const end = floorTo(now, bucketSeconds)
-  const start = end - (buckets - 1) * bucketSeconds
-
-  const points = new Map<number, RevenuePoint>()
-  for (let index = 0; index < buckets; index += 1) {
-    const date = start + index * bucketSeconds
-    points.set(date, { date, gross: 0, count: 0 })
-  }
+  const indexOf = (created: number, origin: number) =>
+    Math.floor((created - origin) / bucketSeconds)
 
   let total = 0
   let count = 0
 
   for (const charge of charges) {
-    const bucket = points.get(floorTo(charge.created, bucketSeconds))
-    if (!bucket) continue
-    bucket.gross += charge.amount
-    bucket.count += 1
+    const point = points[indexOf(charge.created, range.start)]
+    if (!point) continue
+    point.gross += charge.amount
+    point.count += 1
     total += charge.amount
     count += 1
   }
 
+  let previousTotal = 0
+
+  for (const charge of previousCharges) {
+    previousTotal += charge.amount
+    const point = points[indexOf(charge.created, comparison.start)]
+    if (point) point.previousGross += charge.amount
+  }
+
+  const peak = points.reduce<RevenuePoint | null>(
+    (best, point) => (point.gross > 0 && (!best || point.gross > best.gross) ? point : best),
+    null,
+  )
+
   return {
-    points: Array.from(points.values()),
+    points,
     bucketSeconds,
-    start,
-    end: end + bucketSeconds,
+    start: range.start,
+    end: range.end,
     total,
+    previousTotal,
     count,
+    peak,
   }
 }

@@ -56,22 +56,28 @@ export function formatBucketLabel(unixSeconds: number, bucketSeconds: number) {
   }).format(unixSeconds * 1000)
 }
 
-/** Human description of the charted window, e.g. "6 hours · 15m buckets". */
-export function formatWindowLabel(bucketSeconds: number, buckets: number) {
-  const totalSeconds = bucketSeconds * buckets
-  const bucketLabel =
-    bucketSeconds < 3_600
-      ? `${bucketSeconds / 60}m`
-      : bucketSeconds < 86_400
-        ? `${bucketSeconds / 3_600}h`
-        : `${bucketSeconds / 86_400}d`
+/** Chart sampling interval in words, e.g. "daily". */
+export function formatGranularity(bucketSeconds: number) {
+  if (bucketSeconds < 86_400) return "hourly"
+  if (bucketSeconds === 86_400) return "daily"
+  if (bucketSeconds < 30 * 86_400) return "weekly"
+  return "monthly"
+}
 
-  const spanLabel =
-    totalSeconds < 86_400
-      ? `${Math.round(totalSeconds / 3_600)} hours`
-      : `${Math.round(totalSeconds / 86_400)} days`
+/** Inclusive calendar span, e.g. "Jul 7 – Aug 5, 2026". */
+export function formatRangeSpan(start: number, end: number) {
+  const lastDay = end - 86_400
+  const sameYear =
+    new Date(start * 1000).getUTCFullYear() === new Date(lastDay * 1000).getUTCFullYear()
 
-  return `${spanLabel} · ${bucketLabel} buckets`
+  const from = new Intl.DateTimeFormat("en-US", {
+    month: "short",
+    day: "numeric",
+    ...(sameYear ? {} : { year: "numeric" }),
+    timeZone: "UTC",
+  }).format(start * 1000)
+
+  return `${from} – ${formatDate(lastDay)}`
 }
 
 /** Full calendar date for report rows, e.g. "Mar 4, 2026". */

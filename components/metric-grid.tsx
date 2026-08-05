@@ -9,7 +9,7 @@ type Cell = {
 }
 
 export function MetricGrid({ data }: { data: DashboardData }) {
-  const { currency } = data
+  const { currency, range } = data
 
   const cells: Cell[] = [
     {
@@ -21,32 +21,35 @@ export function MetricGrid({ data }: { data: DashboardData }) {
     {
       label: "Net volume",
       value: formatCurrency(data.netVolume.value, currency),
-      hint: "After Stripe fees and refunds",
+      // The restricted live key has no Balance scope, so only surface the
+      // balance when it actually resolved.
+      hint:
+        data.availableBalance !== null
+          ? `${formatCurrency(data.availableBalance, currency)} available now`
+          : "After Stripe fees and refunds",
       delta: formatDelta(data.netVolume.value, data.netVolume.previous),
     },
-    // The read-only restricted live key has no Balance scope, so fall back to
-    // refunded volume — which is computable from charges — instead of a blank card.
-    data.availableBalance !== null
-      ? {
-          label: "Available balance",
-          value: formatCurrency(data.availableBalance, currency),
-          hint: `${formatCurrency(data.pendingBalance ?? 0, currency)} pending`,
-        }
-      : {
-          label: "Refunded volume",
-          value: formatCurrency(data.refundedVolume.value, currency),
-          hint: "Balance scope not enabled on key",
-          delta: formatDelta(data.refundedVolume.value, data.refundedVolume.previous),
-        },
+    {
+      label: "Avg order value",
+      value: data.successfulPayments.value === 0 ? "—" : formatCurrency(data.averageOrderValue.value, currency),
+      hint: `Across ${formatNumber(data.successfulPayments.value)} payments`,
+      delta: formatDelta(data.averageOrderValue.value, data.averageOrderValue.previous),
+    },
     {
       label: "Authorization rate",
       value: data.isEmpty ? "—" : formatPercent(data.successRate),
-      hint: data.refundedVolume.value > 0 ? `${formatCurrency(data.refundedVolume.value, currency)} refunded` : "No refunds",
+      hint:
+        data.refundedVolume.value > 0
+          ? `${formatCurrency(data.refundedVolume.value, currency)} refunded`
+          : "No refunds in range",
     },
   ]
 
   return (
-    <section aria-label="Key metrics" className="grid grid-cols-1 gap-px overflow-hidden rounded-md border border-border bg-border sm:grid-cols-2 lg:grid-cols-4">
+    <section
+      aria-label="Key metrics"
+      className="grid grid-cols-1 gap-px overflow-hidden rounded-md border border-border bg-border sm:grid-cols-2 lg:grid-cols-4"
+    >
       {cells.map((cell) => (
         <article key={cell.label} className="flex flex-col gap-3 bg-surface px-5 py-6">
           <h2 className="numeric text-[11px] uppercase tracking-[0.14em] text-muted">{cell.label}</h2>
@@ -62,6 +65,7 @@ export function MetricGrid({ data }: { data: DashboardData }) {
                       ? "text-alert"
                       : "text-muted"
                 }`}
+                title={`vs prior ${range.days} days`}
               >
                 {cell.delta.label}
               </span>

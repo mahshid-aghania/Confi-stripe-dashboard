@@ -60,7 +60,7 @@
  */
 @media print {
   @page {
-    margin: 14mm;
+    margin: 12mm;
   }
 
   html {
@@ -72,7 +72,11 @@
     color: #101216;
   }
 
-  /* Force the theme tokens to paper equivalents for every descendant. */
+  /*
+   * Recharts writes these into SVG paint attributes as var() references, so
+   * redefining them here genuinely re-colours the charts for paper. Tailwind
+   * utilities are a different story -- see the explicit block below.
+   */
   :root {
     --color-background: #ffffff;
     --color-foreground: #101216;
@@ -80,6 +84,70 @@
     --color-surface-raised: #f4f5f7;
     --color-border: #c9ced8;
     --color-muted: #55606f;
+    --color-signal: #1d4ed8;
+    --color-alert: #b4232a;
+    --color-warn: #8a6114;
+  }
+
+  /*
+   * `@theme inline` compiles utilities to literal hex rather than var(), so the
+   * token overrides above cannot reach `.text-foreground` and friends. Each
+   * colour utility the report uses is restated for paper. Without this the page
+   * prints near-white text on white -- effectively blank.
+   */
+  .text-foreground {
+    color: #101216 !important;
+  }
+
+  .text-muted {
+    color: #55606f !important;
+  }
+
+  .text-signal {
+    color: #1d4ed8 !important;
+  }
+
+  .text-alert {
+    color: #b4232a !important;
+  }
+
+  .text-warn {
+    color: #8a6114 !important;
+  }
+
+  .text-background {
+    color: #ffffff !important;
+  }
+
+  .bg-surface,
+  .bg-surface-raised {
+    background-color: #ffffff !important;
+  }
+
+  .bg-border {
+    background-color: #c9ced8 !important;
+  }
+
+  .bg-muted {
+    background-color: #55606f !important;
+  }
+
+  .border-border {
+    border-color: #c9ced8 !important;
+  }
+
+  /* Chart fills and the accent chips are meaningful, not decorative. */
+  svg,
+  .bg-signal,
+  .bg-muted,
+  .bg-border {
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+  }
+
+  /* Screen-only texture that turns to mud on paper. */
+  .grid-texture {
+    background-image: none !important;
   }
 
   /* Keep a chart and its caption from splitting across a page break. */
@@ -93,5 +161,9 @@
 
   tr {
     break-inside: avoid;
+  }
+
+  thead {
+    display: table-header-group;
   }
 }

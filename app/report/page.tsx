@@ -56,7 +56,9 @@ export default async function ReportPage({
             </p>
           </div>
 
-          <div className="flex flex-col items-start gap-3 lg:items-end">
+          {/* Controls are screen-only; the printed page states its period in the
+              header text above, so nothing is lost. */}
+          <div className="flex flex-col items-start gap-3 print:hidden lg:items-end">
             <MonthRangePicker choices={choices} fromKey={utcMonthKey(range.start)} toKey={lastMonthKey} />
             <ReportExport data={data} />
           </div>

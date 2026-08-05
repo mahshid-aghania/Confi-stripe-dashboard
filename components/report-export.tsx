@@ -1,5 +1,7 @@
 "use client"
 
+import { useEffect, useRef, useState } from "react"
+
 import type { ReportData } from "@/lib/report-data"
 
 /** RFC 4180 quoting: wrap in quotes and double any embedded quotes. */
@@ -121,7 +123,53 @@ function toCsv(data: ReportData) {
   return lines.join("\r\n")
 }
 
+/** Marker that tells a freshly opened standalone tab to print itself. */
+const AUTO_PRINT_PARAM = "print"
+
 export function ReportExport({ data }: { data: ReportData }) {
+  const [blocked, setBlocked] = useState(false)
+  const printed = useRef(false)
+
+  /*
+   * When this page is opened as a standalone tab carrying ?print=1, raise the
+   * print dialog once the report has painted, then strip the marker so a later
+   * reload or a shared link does not surprise anyone with a print prompt.
+   */
+  useEffect(() => {
+    if (printed.current) return
+
+    const url = new URL(window.location.href)
+    if (url.searchParams.get(AUTO_PRINT_PARAM) !== "1") return
+
+    printed.current = true
+    url.searchParams.delete(AUTO_PRINT_PARAM)
+    window.history.replaceState(null, "", url.toString())
+
+    // Two frames gives Recharts time to lay out its SVG before the snapshot.
+    const id = window.requestAnimationFrame(() =>
+      window.requestAnimationFrame(() => window.print()),
+    )
+
+    return () => window.cancelAnimationFrame(id)
+  }, [])
+
+  function printReport() {
+    // Inside an embedded preview, print() either gets blocked outright or
+    // captures the surrounding editor chrome rather than the report. Opening a
+    // top-level tab is the only way to reliably print just this page.
+    if (window.self !== window.top) {
+      const url = new URL(window.location.href)
+      url.searchParams.set(AUTO_PRINT_PARAM, "1")
+
+      const tab = window.open(url.toString(), "_blank", "noopener,noreferrer")
+      setBlocked(tab === null)
+      return
+    }
+
+    setBlocked(false)
+    window.print()
+  }
+
   function downloadCsv() {
     // BOM so Excel reads UTF-8 currency symbols correctly.
     const blob = new Blob([`\uFEFF${toCsv(data)}`], { type: "text/csv;charset=utf-8;" })
@@ -139,24 +187,32 @@ export function ReportExport({ data }: { data: ReportData }) {
   const disabled = data.months.length === 0
 
   return (
-    <div className="flex flex-wrap items-center gap-2 print:hidden">
-      <button
-        type="button"
-        onClick={downloadCsv}
-        disabled={disabled}
-        className="numeric rounded-md border border-border px-3.5 py-2 text-[11px] uppercase tracking-[0.14em] text-foreground transition-colors hover:border-signal hover:text-signal disabled:cursor-not-allowed disabled:text-muted disabled:hover:border-border"
-      >
-        Export CSV
-      </button>
+    <div className="flex flex-col items-start gap-1.5 print:hidden lg:items-end">
+      <div className="flex flex-wrap items-center gap-2">
+        <button
+          type="button"
+          onClick={downloadCsv}
+          disabled={disabled}
+          className="numeric rounded-md border border-border px-3.5 py-2 text-[11px] uppercase tracking-[0.14em] text-foreground transition-colors hover:border-signal hover:text-signal disabled:cursor-not-allowed disabled:text-muted disabled:hover:border-border"
+        >
+          Export CSV
+        </button>
 
-      <button
-        type="button"
-        onClick={() => window.print()}
-        disabled={disabled}
-        className="numeric rounded-md border border-border px-3.5 py-2 text-[11px] uppercase tracking-[0.14em] text-foreground transition-colors hover:border-signal hover:text-signal disabled:cursor-not-allowed disabled:text-muted disabled:hover:border-border"
-      >
-        Print / PDF
-      </button>
+        <button
+          type="button"
+          onClick={printReport}
+          disabled={disabled}
+          className="numeric rounded-md border border-border px-3.5 py-2 text-[11px] uppercase tracking-[0.14em] text-foreground transition-colors hover:border-signal hover:text-signal disabled:cursor-not-allowed disabled:text-muted disabled:hover:border-border"
+        >
+          Print / PDF
+        </button>
+      </div>
+
+      {blocked ? (
+        <p role="alert" className="numeric max-w-[16rem] text-[10px] leading-relaxed text-warn lg:text-right">
+          Allow pop-ups to print, or open this report in its own tab first.
+        </p>
+      ) : null}
     </div>
   )
 }

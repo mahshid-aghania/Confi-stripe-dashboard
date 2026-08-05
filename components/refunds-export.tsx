@@ -76,7 +76,15 @@ function toCsv(rows: RefundRow[]) {
   return lines.join("\r\n")
 }
 
-export function RefundsExport({ rows, windowDays }: { rows: RefundRow[]; windowDays: number }) {
+export function RefundsExport({
+  rows,
+  windowDays,
+  filtered = false,
+}: {
+  rows: RefundRow[]
+  windowDays: number
+  filtered?: boolean
+}) {
   function download() {
     // BOM so Excel reads UTF-8 names and currency symbols correctly.
     const blob = new Blob([`\uFEFF${toCsv(rows)}`], { type: "text/csv;charset=utf-8;" })
@@ -85,7 +93,7 @@ export function RefundsExport({ rows, windowDays }: { rows: RefundRow[]; windowD
     const stamp = new Date().toISOString().slice(0, 10)
 
     link.href = url
-    link.download = `refunds-last-${windowDays}d-${stamp}.csv`
+    link.download = `refunds-${filtered ? "filtered" : `last-${windowDays}d`}-${stamp}.csv`
     document.body.appendChild(link)
     link.click()
     document.body.removeChild(link)
@@ -97,9 +105,9 @@ export function RefundsExport({ rows, windowDays }: { rows: RefundRow[]; windowD
       type="button"
       onClick={download}
       disabled={rows.length === 0}
-      className="numeric rounded-md border border-border px-3.5 py-2 text-[11px] uppercase tracking-[0.14em] text-foreground transition-colors hover:border-signal hover:text-signal disabled:cursor-not-allowed disabled:text-muted disabled:hover:border-border"
+      className="numeric shrink-0 rounded-md border border-border px-3.5 py-2 text-[11px] uppercase tracking-[0.14em] text-foreground transition-colors hover:border-signal hover:text-signal disabled:cursor-not-allowed disabled:text-muted disabled:hover:border-border"
     >
-      Export CSV
+      {filtered ? `Export ${rows.length} rows` : "Export CSV"}
     </button>
   )
 }

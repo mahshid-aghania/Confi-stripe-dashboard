@@ -45,6 +45,10 @@ export type RefundsReport = {
   count: number
   partialCount: number
   withReasonCount: number
+  /** Distinct customers by email, so repeat refunders are not double counted. */
+  uniqueCustomers: number
+  /** Succeeded charge volume in the same window; null when the call fails. */
+  grossVolume: number | null
   reasonBreakdown: { reason: string; count: number; amount: number }[]
   truncated: boolean
   error: string | null
@@ -58,6 +62,63 @@ export const EMPTY_ADDRESS: RefundAddress = {
   postalCode: null,
   country: null,
   source: null,
+}
+
+export type SortKey = "date" | "amount" | "name" | "order"
+export type SortDirection = "asc" | "desc"
+export type RefundKind = "all" | "partial" | "full"
+
+/** Free-text match across every field an operator would search by. */
+export function matchesQuery(row: RefundRow, query: string) {
+  const needle = query.trim().toLowerCase()
+  if (!needle) return true
+
+  return [
+    row.orderNumber,
+    row.firstName,
+    row.lastName,
+    row.fullName,
+    row.email,
+    row.reason,
+    row.status,
+    row.paymentId,
+    row.id,
+    row.receiptNumber,
+    row.cardLast4,
+    formatAddress(row.address),
+  ].some((field) => field?.toLowerCase().includes(needle))
+}
+
+export function sortRows(rows: RefundRow[], key: SortKey, direction: SortDirection) {
+  const factor = direction === "asc" ? 1 : -1
+
+  return [...rows].sort((a, b) => {
+    switch (key) {
+      case "amount":
+        return (a.amount - b.amount) * factor
+      case "name":
+        // Blank names always sink, regardless of direction.
+        return (
+          (a.lastName ?? a.firstName ?? "\uffff").localeCompare(b.lastName ?? b.firstName ?? "\uffff") *
+          factor
+        )
+      case "order":
+        return (a.orderNumber ?? "\uffff").localeCompare(b.orderNumber ?? "\uffff", undefined, {
+          numeric: true,
+        }) * factor
+      default:
+        return (a.createdAt - b.createdAt) * factor
+    }
+  })
+}
+
+/** Multi-line address block for the expanded detail panel. */
+export function addressLines(address: RefundAddress) {
+  if (!address.line1) return []
+
+  const region = [address.city, address.state, address.postalCode].filter(Boolean).join(" ")
+
+  return [address.line1, address.line2, region, address.country].filter(Boolean) as string[]
 }
 
 /** Single-line address, e.g. "12 King St W, Toronto ON M5H 1A1, CA". */

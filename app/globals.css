@@ -15,6 +15,9 @@
   /* Accent for negative states */
   --color-alert: #e5484d;
 
+  /* Caution state: partial refunds and pending settlement */
+  --color-warn: #d99a2b;
+
   --font-sans: "Geist", "Geist Fallback", ui-sans-serif, system-ui, sans-serif;
   --font-mono: "Geist Mono", "Geist Mono Fallback", ui-monospace, monospace;
 

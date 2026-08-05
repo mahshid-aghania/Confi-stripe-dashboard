@@ -1,7 +1,7 @@
-import { RefundsExport } from "@/components/refunds-export"
 import { RefundsSummary } from "@/components/refunds-summary"
-import { RefundsTable } from "@/components/refunds-table"
+import { RefundsWorkspace } from "@/components/refunds-workspace"
 import { TabNav } from "@/components/tab-nav"
+import { WindowSelect, WINDOW_OPTIONS } from "@/components/window-select"
 import { formatDate, formatTimestamp } from "@/lib/format"
 import { getRefundsReport, REFUND_WINDOW_DAYS } from "@/lib/refunds-data"
 
@@ -9,11 +9,25 @@ export const dynamic = "force-dynamic"
 
 export const metadata = {
   title: "Refund report · Confi",
-  description: "Every refund issued in the trailing 30 days, from the live Stripe account.",
+  description: "Every refund issued on the live Stripe account, with full customer and payment detail.",
 }
 
-export default async function RefundsPage() {
-  const report = await getRefundsReport(REFUND_WINDOW_DAYS)
+/** Only allow the presented windows, so the Stripe range can't be driven arbitrarily. */
+function resolveWindow(value: string | string[] | undefined) {
+  const parsed = Number(Array.isArray(value) ? value[0] : value)
+  return WINDOW_OPTIONS.includes(parsed as (typeof WINDOW_OPTIONS)[number])
+    ? parsed
+    : REFUND_WINDOW_DAYS
+}
+
+export default async function RefundsPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ days?: string | string[] }>
+}) {
+  const { days } = await searchParams
+  const windowDays = resolveWindow(days)
+  const report = await getRefundsReport(windowDays)
 
   return (
     <main className="mx-auto flex w-full max-w-6xl flex-col gap-8 px-5 py-10 md:px-8 md:py-14">
@@ -28,15 +42,17 @@ export default async function RefundsPage() {
           <h1 className="text-2xl font-medium tracking-tight text-balance md:text-3xl">Refund report</h1>
           <p className="max-w-2xl text-sm leading-relaxed text-muted">
             Every refund issued between {formatDate(report.rangeStart)} and {formatDate(report.generatedAt)},
-            resolved against the live Stripe account.
+            resolved against the live Stripe account. Select any row for full payment and address detail.
           </p>
         </div>
 
         <div className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
           <TabNav />
-          <div className="flex items-center gap-4 pb-0.5">
-            <p className="numeric text-[11px] text-muted">Synced {formatTimestamp(report.generatedAt)} UTC</p>
-            <RefundsExport rows={report.rows} windowDays={report.windowDays} />
+          <div className="flex items-center gap-3 pb-0.5">
+            <p className="numeric hidden text-[11px] text-muted lg:block">
+              Synced {formatTimestamp(report.generatedAt)} UTC
+            </p>
+            <WindowSelect active={report.windowDays} />
           </div>
         </div>
       </header>
@@ -58,7 +74,7 @@ export default async function RefundsPage() {
       ) : null}
 
       <RefundsSummary report={report} />
-      <RefundsTable rows={report.rows} />
+      <RefundsWorkspace report={report} />
 
       <footer className="flex flex-col gap-2 border-t border-border pt-6">
         <p className="numeric text-[11px] leading-relaxed text-muted">

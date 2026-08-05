@@ -1,18 +1,34 @@
-import { formatCurrency, formatNumber, formatRefundReason } from "@/lib/format"
+import { formatCurrency, formatNumber, formatPercent, formatRefundReason } from "@/lib/format"
 import type { RefundsReport } from "@/lib/refunds-types"
 
 export function RefundsSummary({ report }: { report: RefundsReport }) {
   const stats = [
-    { label: "Refunds issued", value: formatNumber(report.count) },
-    { label: "Total refunded", value: formatCurrency(report.totalAmount, report.currency) },
+    { label: "Refunds issued", value: formatNumber(report.count), hint: `${formatNumber(report.uniqueCustomers)} customers` },
+    {
+      label: "Total refunded",
+      value: formatCurrency(report.totalAmount, report.currency),
+      hint: `${formatNumber(report.partialCount)} partial`,
+    },
+    {
+      // Share of gross volume is the number that says whether refunds are a problem.
+      label: "Refund rate",
+      value:
+        report.grossVolume && report.grossVolume > 0
+          ? formatPercent(report.totalAmount / report.grossVolume)
+          : "—",
+      hint:
+        report.grossVolume && report.grossVolume > 0
+          ? `of ${formatCurrency(report.grossVolume, report.currency)} gross`
+          : "Gross volume unavailable",
+    },
     {
       label: "Average refund",
       value:
         report.count === 0
           ? "—"
           : formatCurrency(Math.round(report.totalAmount / report.count), report.currency),
+      hint: report.count === 0 ? "No refunds" : `across ${formatNumber(report.count)} refunds`,
     },
-    { label: "Partial refunds", value: formatNumber(report.partialCount) },
   ]
 
   return (
@@ -22,6 +38,7 @@ export function RefundsSummary({ report }: { report: RefundsReport }) {
           <div key={stat.label} className="flex flex-col gap-2 bg-surface px-5 py-4">
             <p className="numeric text-[11px] uppercase tracking-[0.14em] text-muted">{stat.label}</p>
             <p className="numeric text-xl tracking-tight">{stat.value}</p>
+            <p className="numeric text-[11px] text-muted">{stat.hint}</p>
           </div>
         ))}
       </div>

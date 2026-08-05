@@ -117,6 +117,27 @@ function toRow(refund: Stripe.Refund): RefundRow {
 }
 
 /**
+ * Succeeded charge volume for the window, used to express refunds as a share of
+ * revenue. Returns null instead of throwing so a missing scope or a slow page
+ * never takes the report down with it.
+ */
+async function getGrossVolume(rangeStart: number): Promise<number | null> {
+  try {
+    let total = 0
+    let seen = 0
+
+    for await (const charge of stripe.charges.list({ limit: 100, created: { gte: rangeStart } })) {
+      if (charge.status === "succeeded") total += charge.amount
+      if (++seen >= 2000) break
+    }
+
+    return total
+  } catch {
+    return null
+  }
+}
+
+/**
  * Every refund created in the trailing window, paginated to completion.
  * `charge.customer` is expanded so the address chain can fall back to the saved
  * customer record even when the refund itself has no customer reference.
@@ -135,6 +156,8 @@ export async function getRefundsReport(windowDays = REFUND_WINDOW_DAYS): Promise
     count: 0,
     partialCount: 0,
     withReasonCount: 0,
+    uniqueCustomers: 0,
+    grossVolume: null,
     reasonBreakdown: [],
     truncated: false,
     error: null,
@@ -165,6 +188,7 @@ export async function getRefundsReport(windowDays = REFUND_WINDOW_DAYS): Promise
   }
 
   const rows = refunds.map(toRow).sort((a, b) => b.createdAt - a.createdAt)
+  const grossVolume = await getGrossVolume(rangeStart)
 
   const reasonTotals = new Map<string, { count: number; amount: number }>()
   for (const row of rows) {
@@ -181,6 +205,8 @@ export async function getRefundsReport(windowDays = REFUND_WINDOW_DAYS): Promise
     count: rows.length,
     partialCount: rows.filter((row) => row.isPartial).length,
     withReasonCount: rows.filter((row) => row.reason !== null).length,
+    uniqueCustomers: new Set(rows.map((row) => row.email ?? row.id)).size,
+    grossVolume,
     reasonBreakdown: [...reasonTotals.entries()]
       .map(([reason, totals]) => ({ reason, ...totals }))
       .sort((a, b) => b.count - a.count),

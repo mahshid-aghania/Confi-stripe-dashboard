@@ -1,3 +1,4 @@
+import Link from "next/link"
 import { ConsoleHeader } from "@/components/console-header"
 import { MetricGrid } from "@/components/metric-grid"
 import { PaymentsTable } from "@/components/payments-table"
@@ -26,6 +27,23 @@ export default async function DashboardPage({
         basePath="/"
       />
       <TabNav />
+
+      {/* 2026 H1 Report CTA */}
+      <div className="flex items-center justify-between gap-6 rounded-md border border-border bg-surface p-5 md:p-6">
+        <div className="flex flex-col gap-1">
+          <p className="numeric text-[10px] uppercase tracking-[0.18em] text-muted">Quick report</p>
+          <p className="text-sm font-medium text-foreground">2026 Revenue Report</p>
+          <p className="numeric text-xs text-muted">
+            Jan 1 – Jul 31, 2026 · 7 months · net revenue, refunds &amp; month-over-month
+          </p>
+        </div>
+        <Link
+          href="/report?from=2026-01-01&to=2026-07-31"
+          className="numeric shrink-0 rounded-md border border-signal px-4 py-2.5 text-[11px] uppercase tracking-[0.14em] text-signal transition-colors hover:bg-signal hover:text-background"
+        >
+          Generate report →
+        </Link>
+      </div>
 
       {data.error ? (
         <div role="alert" className="rounded-md border border-alert/40 bg-surface px-5 py-4">

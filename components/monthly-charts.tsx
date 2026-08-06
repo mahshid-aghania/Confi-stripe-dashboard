@@ -12,6 +12,8 @@ import {
   Tooltip,
   XAxis,
   YAxis,
+  LabelList,
+  Legend,
 } from "recharts"
 
 import type { MonthRow } from "@/lib/report-data"
@@ -28,6 +30,28 @@ const C = {
 } as const
 
 const AXIS_TICK = { fill: C.muted, fontSize: 11, fontFamily: "var(--font-mono)" } as const
+
+/** One vivid color per calendar month position (0 = Jan, 11 = Dec). */
+const MONTH_PALETTE = [
+  "#4c8dff", // Jan — blue
+  "#a78bfa", // Feb — violet
+  "#34d399", // Mar — emerald
+  "#fbbf24", // Apr — amber
+  "#22d3ee", // May — cyan
+  "#fb923c", // Jun — orange
+  "#e879f9", // Jul — fuchsia
+  "#f87171", // Aug — rose
+  "#a3e635", // Sep — lime
+  "#38bdf8", // Oct — sky
+  "#fdba74", // Nov — peach
+  "#c084fc", // Dec — purple
+] as const
+
+function monthColor(key: string): string {
+  const match = /^(\d{4})-(\d{2})$/.exec(key)
+  if (!match) return MONTH_PALETTE[0]
+  return MONTH_PALETTE[(Number(match[2]) - 1) % 12]
+}
 
 function Panel({
   title,
@@ -271,6 +295,163 @@ export function MonthOverMonthChart({
             </BarChart>
           </ResponsiveContainer>
         )}
+      </div>
+    </Panel>
+  )
+}
+
+// ---------------------------------------------------------------------------
+// Fancy stacked chart: net (colored per month) + refunds (red overlay)
+// MoM % badges rendered above each bar via a custom label.
+// ---------------------------------------------------------------------------
+
+interface MomLabelProps {
+  x?: number
+  y?: number
+  width?: number
+  value?: number | null
+  index?: number
+  months: MonthRow[]
+}
+
+function MomLabel({ x = 0, y = 0, width = 0, index = 0, months }: MomLabelProps) {
+  const row = months[index]
+  if (!row || row.momRatio === null) return null
+
+  const up = row.momRatio > 0.0005
+  const down = row.momRatio < -0.0005
+  const color = up ? "#34d399" : down ? "#f87171" : "#767e8b"
+  const arrow = up ? "▲" : down ? "▼" : "•"
+  const text = `${arrow} ${formatPercent(row.momRatio)}`
+
+  return (
+    <text
+      x={x + width / 2}
+      y={y - 6}
+      textAnchor="middle"
+      fill={color}
+      fontSize={9}
+      fontFamily="var(--font-mono)"
+      letterSpacing="-0.01em"
+    >
+      {text}
+    </text>
+  )
+}
+
+/**
+ * Stacked bar chart where each month is a distinct colour.
+ * Bottom stack = net revenue; top stack = refunds (red).
+ * MoM % badge floats above every bar.
+ */
+export function StackedRevenueChart({
+  months,
+  currency,
+}: {
+  months: MonthRow[]
+  currency: string
+}) {
+  const hasVolume = months.some((m) => m.gross > 0)
+
+  return (
+    <Panel
+      title="Revenue breakdown · net + refunds"
+      hint="Each month is a distinct colour. The dark-red top segment shows refunds deducted from gross. The badge above each bar shows month-over-month change."
+    >
+      {/* Legend */}
+      <div className="mt-3 flex flex-wrap items-center gap-5">
+        <span className="flex items-center gap-1.5 text-[11px] text-muted">
+          <span className="inline-block h-2.5 w-3 rounded-sm" style={{ background: MONTH_PALETTE[0] }} />
+          Net revenue
+        </span>
+        <span className="flex items-center gap-1.5 text-[11px] text-muted">
+          <span className="inline-block h-2.5 w-3 rounded-sm bg-alert opacity-75" />
+          Refunds
+        </span>
+        <span className="flex items-center gap-1.5 gap-x-1 text-[11px] text-muted">
+          <span className="text-[#34d399]">▲</span>
+          <span className="text-[#f87171]">▼</span>
+          MoM change
+        </span>
+      </div>
+
+      <div className="relative mt-4 h-80 w-full md:h-96">
+        {!hasVolume ? (
+          <div className="absolute inset-0 z-10 flex items-center justify-center">
+            <p className="numeric text-xs uppercase tracking-[0.14em] text-muted">No payments in this range</p>
+          </div>
+        ) : null}
+
+        <ResponsiveContainer width="100%" height="100%">
+          <BarChart data={months} margin={{ top: 28, right: 8, bottom: 0, left: 0 }} barCategoryGap="30%">
+            <CartesianGrid stroke={C.border} strokeDasharray="2 4" vertical={false} />
+
+            <XAxis
+              dataKey="label"
+              tickLine={false}
+              axisLine={{ stroke: C.border }}
+              tick={AXIS_TICK}
+              interval="preserveStartEnd"
+              dy={8}
+            />
+            <YAxis
+              tickFormatter={(v: number) => formatCurrency(v, currency, { compact: true })}
+              tickLine={false}
+              axisLine={false}
+              tick={AXIS_TICK}
+              width={64}
+            />
+
+            <Tooltip
+              cursor={{ fill: "var(--color-surface-raised)" }}
+              content={({ active, payload }) => {
+                if (!active || !payload?.length) return null
+                const row = payload[0]?.payload as MonthRow
+                return (
+                  <TooltipShell
+                    heading={row.partial ? `${row.label} · partial` : row.label}
+                    rows={[
+                      ["Gross", formatCurrency(row.gross, currency)],
+                      ["Refunds", formatCurrency(row.refunded, currency)],
+                      ["Net", formatCurrency(row.net, currency)],
+                      ["Fees", formatCurrency(row.fees, currency)],
+                      ["Payments", formatNumber(row.payments)],
+                      ["vs prior", row.momRatio === null ? "—" : formatPercent(row.momRatio)],
+                    ]}
+                  />
+                )
+              }}
+            />
+
+            {/* Net revenue — bottom stack, unique colour per month */}
+            <Bar dataKey="net" stackId="rev" radius={[0, 0, 0, 0]} maxBarSize={52} isAnimationActive={false}>
+              {months.map((month) => (
+                <Cell key={month.key} fill={monthColor(month.key)} fillOpacity={month.partial ? 0.45 : 0.88} />
+              ))}
+            </Bar>
+
+            {/* Refunds — top stack, alert-red; carries the MoM label */}
+            <Bar
+              dataKey="refunded"
+              stackId="rev"
+              radius={[3, 3, 0, 0]}
+              maxBarSize={52}
+              fill="#e5484d"
+              fillOpacity={0.75}
+              isAnimationActive={false}
+            >
+              <LabelList
+                dataKey="refunded"
+                content={(props) => (
+                  <MomLabel
+                    {...(props as { x?: number; y?: number; width?: number; value?: number | null; index?: number })}
+                    months={months}
+                  />
+                )}
+              />
+            </Bar>
+          </BarChart>
+        </ResponsiveContainer>
       </div>
     </Panel>
   )

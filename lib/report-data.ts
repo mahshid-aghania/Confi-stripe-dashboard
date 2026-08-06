@@ -1,5 +1,6 @@
 import "server-only"
 
+import { unstable_cache } from "next/cache"
 import type Stripe from "stripe"
 
 import { type DateRange, monthsInRange, previousMonthStart, utcMonthKey } from "@/lib/date-range"
@@ -104,7 +105,7 @@ function chargeFee(charge: Stripe.Charge) {
   return transaction && typeof transaction !== "string" ? transaction.fee : 0
 }
 
-export async function getReportData(range: DateRange): Promise<ReportData> {
+async function fetchReportData(range: DateRange): Promise<ReportData> {
   const generatedAt = Math.floor(Date.now() / 1000)
   const buckets = monthsInRange(range)
 
@@ -267,3 +268,10 @@ export async function getReportData(range: DateRange): Promise<ReportData> {
     return { ...base, error: error instanceof Error ? error.message : "Unable to reach Stripe." }
   }
 }
+
+/** Cached wrapper — revalidates every 5 minutes per range key. */
+export const getReportData = unstable_cache(
+  fetchReportData,
+  ["report-data"],
+  { revalidate: 300 },
+)

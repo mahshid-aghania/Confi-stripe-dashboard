@@ -55,6 +55,40 @@
 }
 
 /*
+ * Applied via JS before html2canvas capture so PDF output uses paper tones
+ * instead of the dark UI theme.
+ */
+.printing,
+.printing body {
+  background-color: #ffffff !important;
+  color: #101216 !important;
+}
+
+.printing {
+  color-scheme: light !important;
+  --color-background: #ffffff;
+  --color-foreground: #101216;
+  --color-surface: #ffffff;
+  --color-surface-raised: #f4f5f7;
+  --color-border: #c9ced8;
+  --color-muted: #55606f;
+  --color-signal: #1d4ed8;
+  --color-alert: #b4232a;
+  --color-warn: #8a6114;
+}
+
+.printing .text-foreground { color: #101216 !important; }
+.printing .text-muted      { color: #55606f !important; }
+.printing .text-signal     { color: #1d4ed8 !important; }
+.printing .text-alert      { color: #b4232a !important; }
+.printing .text-warn       { color: #8a6114 !important; }
+.printing .bg-surface,
+.printing .bg-surface-raised { background-color: #ffffff !important; }
+.printing .bg-border       { background-color: #c9ced8 !important; }
+.printing .border-border   { border-color: #c9ced8 !important; }
+.printing .grid-texture    { background-image: none !important; }
+
+/*
  * The report is designed to be saved as a PDF. Inverting to paper tones keeps it
  * legible when printed and avoids flooding a printer with a dark background.
  */

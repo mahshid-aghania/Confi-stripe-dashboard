@@ -1,6 +1,6 @@
 "use client"
 
-import { useEffect, useRef, useState } from "react"
+import { useRef, useState } from "react"
 
 import type { ReportData } from "@/lib/report-data"
 
@@ -12,7 +12,6 @@ function cell(value: string | number | null) {
 
 const ZERO_DECIMAL = new Set(["bif", "clp", "djf", "gnf", "jpy", "kmf", "krw", "mga", "pyg", "rwf", "ugx", "vnd", "vuv", "xaf", "xof", "xpf"])
 
-/** Plain decimal so spreadsheets treat the column as a number, not text. */
 function money(minorAmount: number, currency: string) {
   return ZERO_DECIMAL.has(currency.toLowerCase()) ? String(minorAmount) : (minorAmount / 100).toFixed(2)
 }
@@ -22,32 +21,15 @@ function ratio(value: number | null) {
 }
 
 const HEADERS = [
-  "Month",
-  "Period start (UTC)",
-  "Period end (UTC)",
-  "Days counted",
-  "Full month",
-  "Gross revenue",
-  "MoM change %",
-  "MoM difference",
-  "Stripe fees",
-  "Refunded",
-  "Net revenue",
-  "Payments",
-  "Refunded payments",
-  "Failed payments",
-  "Unique customers",
-  "Average order value",
-  "Average per day",
-  "Cumulative gross",
-  "Currency",
+  "Month", "Period start (UTC)", "Period end (UTC)", "Days counted", "Full month",
+  "Gross revenue", "MoM change %", "MoM difference", "Stripe fees", "Refunded",
+  "Net revenue", "Payments", "Refunded payments", "Failed payments",
+  "Unique customers", "Average order value", "Average per day", "Cumulative gross", "Currency",
 ]
 
 function toCsv(data: ReportData) {
   const { currency, range, totals, months } = data
 
-  // A short metadata preamble keeps an exported file self-describing once it is
-  // detached from the dashboard.
   const lines = [
     [cell("ConfiDentist revenue report")].join(","),
     [cell("Period"), cell(`${range.fromISO} to ${range.toISO}`)].join(","),
@@ -73,7 +55,6 @@ function toCsv(data: ReportData) {
       [
         cell(month.label),
         cell(new Date(month.start * 1000).toISOString().slice(0, 10)),
-        // Stored end is exclusive; export the last included day instead.
         cell(new Date((month.end - 86_400) * 1000).toISOString().slice(0, 10)),
         cell(month.days),
         cell(month.partial ? "no" : "yes"),
@@ -95,87 +76,29 @@ function toCsv(data: ReportData) {
     )
   }
 
-  // Totals row so the sheet reconciles without re-deriving sums.
   lines.push(
     [
-      cell("TOTAL"),
-      cell(range.fromISO),
-      cell(range.toISO),
-      cell(range.days),
-      cell(""),
-      cell(money(totals.gross, currency)),
-      cell(""),
-      cell(""),
-      cell(money(totals.fees, currency)),
-      cell(money(totals.refunded, currency)),
-      cell(money(totals.net, currency)),
-      cell(totals.payments),
-      cell(totals.refundCount),
-      cell(totals.failedCount),
-      cell(totals.uniqueCustomers),
-      cell(money(totals.averageOrder, currency)),
-      cell(""),
-      cell(money(totals.gross, currency)),
-      cell(currency.toUpperCase()),
+      cell("TOTAL"), cell(range.fromISO), cell(range.toISO), cell(range.days), cell(""),
+      cell(money(totals.gross, currency)), cell(""), cell(""),
+      cell(money(totals.fees, currency)), cell(money(totals.refunded, currency)),
+      cell(money(totals.net, currency)), cell(totals.payments),
+      cell(totals.refundCount), cell(totals.failedCount), cell(totals.uniqueCustomers),
+      cell(money(totals.averageOrder, currency)), cell(""),
+      cell(money(totals.gross, currency)), cell(currency.toUpperCase()),
     ].join(","),
   )
 
   return lines.join("\r\n")
 }
 
-/** Marker that tells a freshly opened standalone tab to print itself. */
-const AUTO_PRINT_PARAM = "print"
-
 export function ReportExport({ data }: { data: ReportData }) {
-  const [blocked, setBlocked] = useState(false)
-  const printed = useRef(false)
-
-  /*
-   * When this page is opened as a standalone tab carrying ?print=1, raise the
-   * print dialog once the report has painted, then strip the marker so a later
-   * reload or a shared link does not surprise anyone with a print prompt.
-   */
-  useEffect(() => {
-    if (printed.current) return
-
-    const url = new URL(window.location.href)
-    if (url.searchParams.get(AUTO_PRINT_PARAM) !== "1") return
-
-    printed.current = true
-    url.searchParams.delete(AUTO_PRINT_PARAM)
-    window.history.replaceState(null, "", url.toString())
-
-    // Two frames gives Recharts time to lay out its SVG before the snapshot.
-    const id = window.requestAnimationFrame(() =>
-      window.requestAnimationFrame(() => window.print()),
-    )
-
-    return () => window.cancelAnimationFrame(id)
-  }, [])
-
-  function printReport() {
-    // Inside an embedded preview, print() either gets blocked outright or
-    // captures the surrounding editor chrome rather than the report. Opening a
-    // top-level tab is the only way to reliably print just this page.
-    if (window.self !== window.top) {
-      const url = new URL(window.location.href)
-      url.searchParams.set(AUTO_PRINT_PARAM, "1")
-
-      const tab = window.open(url.toString(), "_blank", "noopener,noreferrer")
-      setBlocked(tab === null)
-      return
-    }
-
-    setBlocked(false)
-    window.print()
-  }
+  const [pdfState, setPdfState] = useState<"idle" | "generating" | "error">("idle")
+  const disabled = data.months.length === 0
 
   function downloadCsv() {
-    // BOM so Excel reads UTF-8 currency symbols correctly.
-    const blob = new Blob([`\uFEFF${toCsv(data)}`], { type: "text/csv;charset=utf-8;" })
+    const blob = new Blob([`﻿${toCsv(data)}`], { type: "text/csv;charset=utf-8;" })
     const url = URL.createObjectURL(blob)
     const link = document.createElement("a")
-
     link.href = url
     link.download = `revenue-report-${data.range.fromISO}-to-${data.range.toISO}.csv`
     document.body.appendChild(link)
@@ -184,7 +107,62 @@ export function ReportExport({ data }: { data: ReportData }) {
     URL.revokeObjectURL(url)
   }
 
-  const disabled = data.months.length === 0
+  async function downloadPdf() {
+    if (pdfState === "generating") return
+    setPdfState("generating")
+
+    try {
+      const [{ default: jsPDF }, { default: html2canvas }] = await Promise.all([
+        import("jspdf"),
+        import("html2canvas"),
+      ])
+
+      // Switch to paper colours so the PDF is legible on white.
+      document.documentElement.classList.add("printing")
+      // One frame so the class repaints before capture.
+      await new Promise<void>((r) => requestAnimationFrame(() => requestAnimationFrame(() => r())))
+
+      const target = document.getElementById("report-pdf-target") ?? document.body
+
+      const canvas = await html2canvas(target, {
+        backgroundColor: "#ffffff",
+        scale: 2,
+        useCORS: true,
+        logging: false,
+        // Ignore the controls bar (MonthRangePicker / export buttons).
+        ignoreElements: (el) => el.classList.contains("print:hidden"),
+      })
+
+      document.documentElement.classList.remove("printing")
+
+      const imgData = canvas.toDataURL("image/png")
+      const pdf = new jsPDF({ orientation: "portrait", unit: "mm", format: "a4" })
+
+      const pageW = pdf.internal.pageSize.getWidth()
+      const pageH = pdf.internal.pageSize.getHeight()
+      const imgH = (canvas.height * pageW) / canvas.width
+
+      let remaining = imgH
+      let yOffset = 0
+
+      pdf.addImage(imgData, "PNG", 0, yOffset, pageW, imgH)
+      remaining -= pageH
+
+      while (remaining > 0) {
+        yOffset -= pageH
+        pdf.addPage()
+        pdf.addImage(imgData, "PNG", 0, yOffset, pageW, imgH)
+        remaining -= pageH
+      }
+
+      pdf.save(`revenue-report-${data.range.fromISO}-to-${data.range.toISO}.pdf`)
+      setPdfState("idle")
+    } catch (err) {
+      console.error("[pdf]", err)
+      document.documentElement.classList.remove("printing")
+      setPdfState("error")
+    }
+  }
 
   return (
     <div className="flex flex-col items-start gap-1.5 print:hidden lg:items-end">
@@ -200,17 +178,17 @@ export function ReportExport({ data }: { data: ReportData }) {
 
         <button
           type="button"
-          onClick={printReport}
-          disabled={disabled}
-          className="numeric rounded-md border border-border px-3.5 py-2 text-[11px] uppercase tracking-[0.14em] text-foreground transition-colors hover:border-signal hover:text-signal disabled:cursor-not-allowed disabled:text-muted disabled:hover:border-border"
+          onClick={() => void downloadPdf()}
+          disabled={disabled || pdfState === "generating"}
+          className="numeric rounded-md border border-signal px-3.5 py-2 text-[11px] uppercase tracking-[0.14em] text-signal transition-colors hover:bg-signal hover:text-background disabled:cursor-not-allowed disabled:border-border disabled:text-muted disabled:hover:bg-transparent"
         >
-          Print / PDF
+          {pdfState === "generating" ? "Generating PDF…" : "Download PDF"}
         </button>
       </div>
 
-      {blocked ? (
-        <p role="alert" className="numeric max-w-[16rem] text-[10px] leading-relaxed text-warn lg:text-right">
-          Allow pop-ups to print, or open this report in its own tab first.
+      {pdfState === "error" ? (
+        <p role="alert" className="numeric max-w-[16rem] text-[10px] leading-relaxed text-alert lg:text-right">
+          PDF generation failed. Try again or use the browser print dialog.
         </p>
       ) : null}
     </div>

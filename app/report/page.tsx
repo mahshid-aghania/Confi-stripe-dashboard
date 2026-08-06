@@ -36,7 +36,7 @@ export default async function ReportPage({
   const lastMonthKey = utcMonthKey(range.end - 86_400)
 
   return (
-    <main className="mx-auto flex w-full max-w-6xl flex-col gap-8 px-5 py-10 md:px-8 md:py-14">
+    <main id="report-pdf-target" className="mx-auto flex w-full max-w-6xl flex-col gap-8 px-5 py-10 md:px-8 md:py-14">
       <header className="flex flex-col gap-6 border-b border-border pb-6">
         <div className="flex flex-col gap-5 lg:flex-row lg:items-end lg:justify-between">
           <div className="flex flex-col gap-2">

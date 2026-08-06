@@ -1,5 +1,5 @@
 import { MonthRangePicker } from "@/components/month-range-picker"
-import { MonthOverMonthChart, MonthlyRevenueChart } from "@/components/monthly-charts"
+import { MonthOverMonthChart, MonthlyRevenueChart, StackedRevenueChart } from "@/components/monthly-charts"
 import { MonthlyTable } from "@/components/monthly-table"
 import { ReportExport } from "@/components/report-export"
 import { ReportSummary } from "@/components/report-summary"
@@ -87,6 +87,9 @@ export default async function ReportPage({
       ) : null}
 
       <ReportSummary data={data} />
+
+      {/* Fancy stacked chart is the hero — shows net + refunds per month in colour */}
+      <StackedRevenueChart months={data.months} currency={data.currency} />
 
       <div className="flex flex-col gap-6">
         <MonthlyRevenueChart months={data.months} currency={data.currency} />

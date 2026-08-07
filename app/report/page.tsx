@@ -101,7 +101,7 @@ export default async function ReportPage({
       <footer className="border-t border-border pt-6">
         <p className="numeric text-[11px] leading-relaxed text-muted">
           Live data from the Stripe API · amounts in {data.currency.toUpperCase()} · calendar months in UTC ·
-          all amounts exclude tax · net is gross less Stripe fees and refunds
+          gross includes tax · net is gross less Stripe fees and refunds
         </p>
       </footer>
     </main>

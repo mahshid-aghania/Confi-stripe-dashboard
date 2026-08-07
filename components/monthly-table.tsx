@@ -2,14 +2,16 @@ import { formatCurrency, formatNumber, formatPercent } from "@/lib/format"
 import type { MonthRow, ReportData } from "@/lib/report-data"
 
 const COLUMNS = [
-  { key: "month", label: "Month", align: "left" as const },
-  { key: "gross", label: "Gross", align: "right" as const },
-  { key: "mom", label: "MoM", align: "right" as const },
-  { key: "fees", label: "Fees", align: "right" as const },
-  { key: "refunded", label: "Refunded", align: "right" as const },
-  { key: "net", label: "Net", align: "right" as const },
-  { key: "payments", label: "Txns", align: "right" as const },
-  { key: "aov", label: "AOV", align: "right" as const },
+  { key: "month",      label: "Month",      align: "left"  as const },
+  { key: "gross",      label: "Gross",      align: "right" as const },
+  { key: "tax",        label: "Tax",        align: "right" as const },
+  { key: "exTax",      label: "Excl. Tax",  align: "right" as const },
+  { key: "mom",        label: "MoM",        align: "right" as const },
+  { key: "fees",       label: "Fees",       align: "right" as const },
+  { key: "refunded",   label: "Refunded",   align: "right" as const },
+  { key: "net",        label: "Net",        align: "right" as const },
+  { key: "payments",   label: "Txns",       align: "right" as const },
+  { key: "aov",        label: "AOV",        align: "right" as const },
 ]
 
 /** Month-by-month breakdown with a totals row that ties back to the summary. */
@@ -54,6 +56,8 @@ export function MonthlyTable({ data }: { data: ReportData }) {
                   ) : null}
                 </th>
                 <Cell>{formatCurrency(month.gross, currency)}</Cell>
+                <Cell muted>{formatCurrency(month.tax, currency)}</Cell>
+                <Cell>{formatCurrency(month.grossExTax, currency)}</Cell>
                 <td className="px-3 py-3 text-right">
                   <MomBadge row={month} />
                 </td>
@@ -74,6 +78,8 @@ export function MonthlyTable({ data }: { data: ReportData }) {
                 Total
               </th>
               <Cell strong>{formatCurrency(totals.gross, currency)}</Cell>
+              <Cell muted>{formatCurrency(totals.tax, currency)}</Cell>
+              <Cell strong>{formatCurrency(totals.grossExTax, currency)}</Cell>
               <td />
               <Cell muted>{formatCurrency(totals.fees, currency)}</Cell>
               <Cell muted>{formatCurrency(totals.refunded, currency)}</Cell>

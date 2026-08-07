@@ -16,7 +16,12 @@ export type MonthRow = {
   /** The selected range clips this month, so its total is not a full month. */
   partial: boolean
   days: number
+  /** Total charged to customers, tax included (charge.amount). */
   gross: number
+  /** Tax collected via Stripe Tax / invoice tax rates. */
+  tax: number
+  /** gross − tax */
+  grossExTax: number
   /** Stripe processing fees drawn from the settled balance transactions. */
   fees: number
   /** Refunds issued against charges created in this month. */
@@ -39,6 +44,8 @@ export type MonthRow = {
 
 export type ReportTotals = {
   gross: number
+  tax: number
+  grossExTax: number
   fees: number
   refunded: number
   net: number
@@ -70,6 +77,7 @@ export type ReportData = {
 
 type Accumulator = {
   gross: number
+  tax: number
   fees: number
   refunded: number
   payments: number
@@ -81,6 +89,7 @@ type Accumulator = {
 function emptyAccumulator(): Accumulator {
   return {
     gross: 0,
+    tax: 0,
     fees: 0,
     refunded: 0,
     payments: 0,
@@ -106,26 +115,12 @@ function chargeFee(charge: Stripe.Charge) {
 
 type ExpandedInvoice = { tax?: number | null; deleted?: boolean }
 
-/** Expanded invoice attached to a charge, or null when not available. */
-function invoiceForCharge(charge: Stripe.Charge): ExpandedInvoice | null {
+/** Tax collected on a charge from the expanded invoice; 0 when unavailable. */
+function chargeTax(charge: Stripe.Charge): number {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const inv = (charge as any).invoice as ExpandedInvoice | string | null | undefined
-  if (!inv || typeof inv === "string" || inv.deleted) return null
-  return inv
-}
-
-/** Charge amount excluding tax (uses invoice.tax when available). */
-function chargeAmountExTax(charge: Stripe.Charge): number {
-  const tax = invoiceForCharge(charge)?.tax ?? 0
-  return charge.amount - tax
-}
-
-/** Amount refunded excluding the tax portion, prorated from the ex-tax ratio. */
-function chargeRefundedExTax(charge: Stripe.Charge): number {
-  if (charge.amount_refunded === 0) return 0
-  const tax = invoiceForCharge(charge)?.tax ?? 0
-  if (tax === 0 || charge.amount === 0) return charge.amount_refunded
-  return Math.round(charge.amount_refunded * ((charge.amount - tax) / charge.amount))
+  if (!inv || typeof inv === "string" || inv.deleted) return 0
+  return inv.tax ?? 0
 }
 
 export async function getReportData(range: DateRange): Promise<ReportData> {
@@ -139,6 +134,8 @@ export async function getReportData(range: DateRange): Promise<ReportData> {
     months: [],
     totals: {
       gross: 0,
+      tax: 0,
+      grossExTax: 0,
       fees: 0,
       refunded: 0,
       net: 0,
@@ -183,9 +180,10 @@ export async function getReportData(range: DateRange): Promise<ReportData> {
       const bucket = byMonth.get(key) ?? emptyAccumulator()
 
       if (charge.status === "succeeded") {
-        bucket.gross += chargeAmountExTax(charge)
+        bucket.gross += charge.amount
+        bucket.tax += chargeTax(charge)
         bucket.fees += chargeFee(charge)
-        bucket.refunded += chargeRefundedExTax(charge)
+        bucket.refunded += charge.amount_refunded
         bucket.payments += 1
         if (charge.amount_refunded > 0) bucket.refundCount += 1
         bucket.customers.add(customerKey(charge))
@@ -208,6 +206,7 @@ export async function getReportData(range: DateRange): Promise<ReportData> {
 
     const months: MonthRow[] = buckets.map((bucket) => {
       const totals = byMonth.get(bucket.key) ?? emptyAccumulator()
+      const grossExTax = totals.gross - totals.tax
       const net = totals.gross - totals.fees - totals.refunded
       cumulative += totals.gross
 
@@ -225,6 +224,8 @@ export async function getReportData(range: DateRange): Promise<ReportData> {
         partial: bucket.partial,
         days: bucket.days,
         gross: totals.gross,
+        tax: totals.tax,
+        grossExTax,
         fees: totals.fees,
         refunded: totals.refunded,
         net,
@@ -246,6 +247,7 @@ export async function getReportData(range: DateRange): Promise<ReportData> {
     const sum = (pick: (row: MonthRow) => number) => months.reduce((total, row) => total + pick(row), 0)
 
     const gross = sum((row) => row.gross)
+    const tax = sum((row) => row.tax)
     const fees = sum((row) => row.fees)
     const refunded = sum((row) => row.refunded)
     const payments = sum((row) => row.payments)
@@ -261,6 +263,8 @@ export async function getReportData(range: DateRange): Promise<ReportData> {
       months,
       totals: {
         gross,
+        tax,
+        grossExTax: gross - tax,
         fees,
         refunded,
         net: gross - fees - refunded,

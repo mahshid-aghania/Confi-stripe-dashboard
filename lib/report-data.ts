@@ -104,12 +104,14 @@ function chargeFee(charge: Stripe.Charge) {
   return transaction && typeof transaction !== "string" ? transaction.fee : 0
 }
 
-/** Expanded invoice for a charge, or null when unavailable. */
-function invoiceForCharge(charge: Stripe.Charge): Stripe.Invoice | null {
-  const inv = charge.invoice
-  if (!inv || typeof inv === "string") return null
-  if ("deleted" in inv && inv.deleted) return null
-  return inv as Stripe.Invoice
+type ExpandedInvoice = { tax?: number | null; deleted?: boolean }
+
+/** Expanded invoice attached to a charge, or null when not available. */
+function invoiceForCharge(charge: Stripe.Charge): ExpandedInvoice | null {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const inv = (charge as any).invoice as ExpandedInvoice | string | null | undefined
+  if (!inv || typeof inv === "string" || inv.deleted) return null
+  return inv
 }
 
 /** Charge amount excluding tax (uses invoice.tax when available). */

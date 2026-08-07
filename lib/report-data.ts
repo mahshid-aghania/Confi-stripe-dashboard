@@ -104,6 +104,28 @@ function chargeFee(charge: Stripe.Charge) {
   return transaction && typeof transaction !== "string" ? transaction.fee : 0
 }
 
+/** Expanded invoice for a charge, or null when unavailable. */
+function invoiceForCharge(charge: Stripe.Charge): Stripe.Invoice | null {
+  const inv = charge.invoice
+  if (!inv || typeof inv === "string") return null
+  if ("deleted" in inv && inv.deleted) return null
+  return inv as Stripe.Invoice
+}
+
+/** Charge amount excluding tax (uses invoice.tax when available). */
+function chargeAmountExTax(charge: Stripe.Charge): number {
+  const tax = invoiceForCharge(charge)?.tax ?? 0
+  return charge.amount - tax
+}
+
+/** Amount refunded excluding the tax portion, prorated from the ex-tax ratio. */
+function chargeRefundedExTax(charge: Stripe.Charge): number {
+  if (charge.amount_refunded === 0) return 0
+  const tax = invoiceForCharge(charge)?.tax ?? 0
+  if (tax === 0 || charge.amount === 0) return charge.amount_refunded
+  return Math.round(charge.amount_refunded * ((charge.amount - tax) / charge.amount))
+}
+
 export async function getReportData(range: DateRange): Promise<ReportData> {
   const generatedAt = Math.floor(Date.now() / 1000)
   const buckets = monthsInRange(range)
@@ -146,7 +168,7 @@ export async function getReportData(range: DateRange): Promise<ReportData> {
       .list({
         limit: 100,
         created: { gte: baselineStart, lt: range.end },
-        expand: ["data.balance_transaction"],
+        expand: ["data.balance_transaction", "data.invoice"],
       })
       .autoPagingToArray({ limit: CHARGE_LIMIT })
 
@@ -159,9 +181,9 @@ export async function getReportData(range: DateRange): Promise<ReportData> {
       const bucket = byMonth.get(key) ?? emptyAccumulator()
 
       if (charge.status === "succeeded") {
-        bucket.gross += charge.amount
+        bucket.gross += chargeAmountExTax(charge)
         bucket.fees += chargeFee(charge)
-        bucket.refunded += charge.amount_refunded
+        bucket.refunded += chargeRefundedExTax(charge)
         bucket.payments += 1
         if (charge.amount_refunded > 0) bucket.refundCount += 1
         bucket.customers.add(customerKey(charge))

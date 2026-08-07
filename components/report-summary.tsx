@@ -36,7 +36,7 @@ export function ReportSummary({ data }: { data: ReportData }) {
       <div className="flex flex-col gap-6 rounded-md border border-border bg-surface p-5 md:flex-row md:items-end md:justify-between md:p-6">
         <div className="flex flex-col gap-1.5">
           <p className="numeric text-[11px] uppercase tracking-[0.16em] text-muted">
-            Gross revenue · {months.length} {months.length === 1 ? "month" : "months"}
+            Gross revenue (excl. tax) · {months.length} {months.length === 1 ? "month" : "months"}
           </p>
           <p className="numeric text-4xl font-medium tracking-tight text-foreground md:text-5xl">
             {formatCurrency(totals.gross, currency)}

@@ -10,13 +10,20 @@ import Stripe from "stripe"
  * those will throw StripePermissionError — callers must degrade gracefully
  * rather than assume the data is available.
  */
-const liveKey = process.env.STRIPE_LIVE_SECRET_KEY
+const liveKey = process.env.STRIPE_LIVE_SECRET_KEY ?? ""
 
-if (!liveKey) {
-  throw new Error("STRIPE_LIVE_SECRET_KEY is not set")
+// Defer the guard to request time so Next.js can build without the key.
+// The error will surface as a dashboard error card rather than a build crash.
+function getStripe() {
+  if (!liveKey) throw new Error("STRIPE_LIVE_SECRET_KEY is not set")
+  return new Stripe(liveKey)
 }
 
-export const stripe = new Stripe(liveKey)
+export const stripe = new Proxy({} as Stripe, {
+  get(_target, prop) {
+    return getStripe()[prop as keyof Stripe]
+  },
+})
 
 export const isLiveMode = liveKey.includes("_live_")
 
